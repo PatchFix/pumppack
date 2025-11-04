@@ -1154,38 +1154,39 @@ class AlertApp {
                 
                 return `
                     <div class="dex-token-card" data-slot="${slot}" data-mint="${token.mint}">
-                        <div class="dex-token-top">
-                            <div class="token-name-large">${this.escapeHtml(token.name || 'Unknown')}</div>
-                        </div>
-                        <div class="dex-token-bottom">
-                            <div class="token-image-wrapper">
-                                ${imageUrl ? 
-                                    `<img src="" data-src="${imageUrl}" alt="${token.name || ''}" style="display: none; visibility: hidden;">
-                                     <div class="token-image-placeholder" style="background: ${colors[colorIndex]};">${symbolText}</div>` :
-                                    `<div class="token-image-placeholder" style="background: ${colors[colorIndex]};">${symbolText}</div>`
-                                }
-                            </div>
-                            <div class="token-symbol-large">${this.escapeHtml(token.symbol || 'N/A')}</div>
-                            <div class="token-stat">
-                                <div class="token-stat-label">Marketcap</div>
-                                <div class="token-stat-value">${marketCapUSD}</div>
-                            </div>
-                            <div class="token-social-links">
-                                <a href="${hasTwitter ? token.twitter : '#'}" 
-                                   target="_blank" 
-                                   class="social-link twitter ${!hasTwitter ? 'disabled' : ''}" 
-                                   title="Twitter"
-                                   onclick="event.stopPropagation(); ${!hasTwitter ? 'return false;' : ''}">🐦</a>
-                                <a href="${hasWebsite ? token.website : '#'}" 
-                                   target="_blank" 
-                                   class="social-link website ${!hasWebsite ? 'disabled' : ''}" 
-                                   title="Website"
-                                   onclick="event.stopPropagation(); ${!hasWebsite ? 'return false;' : ''}">🌐</a>
-                                <a href="${hasTelegram ? token.telegram : '#'}" 
-                                   target="_blank" 
-                                   class="social-link telegram ${!hasTelegram ? 'disabled' : ''}" 
-                                   title="Telegram"
-                                   onclick="event.stopPropagation(); ${!hasTelegram ? 'return false;' : ''}">💬</a>
+                        <div class="dex-token-main-content">
+                            <div class="dex-token-header-row">
+                                <div class="token-image-wrapper">
+                                    ${imageUrl ? 
+                                        `<img src="" data-src="${imageUrl}" alt="${token.name || ''}" style="display: none; visibility: hidden;">
+                                         <div class="token-image-placeholder" style="background: ${colors[colorIndex]};">${symbolText}</div>` :
+                                        `<div class="token-image-placeholder" style="background: ${colors[colorIndex]};">${symbolText}</div>`
+                                    }
+                                </div>
+                                <div class="token-name-section">
+                                    <div class="token-name-large">${this.escapeHtml(token.name || 'Unknown')}</div>
+                                    <div class="token-symbol-large">${this.escapeHtml(token.symbol || 'N/A')}</div>
+                                </div>
+                                <div class="dex-token-right-section">
+                                    <div class="token-marketcap">${marketCapUSD}</div>
+                                    <div class="token-social-links">
+                                        <a href="${hasTwitter ? token.twitter : '#'}" 
+                                           target="_blank" 
+                                           class="social-link twitter ${!hasTwitter ? 'disabled' : ''}" 
+                                           title="Twitter"
+                                           onclick="event.stopPropagation(); ${!hasTwitter ? 'return false;' : ''}">🐦</a>
+                                        <a href="${hasWebsite ? token.website : '#'}" 
+                                           target="_blank" 
+                                           class="social-link website ${!hasWebsite ? 'disabled' : ''}" 
+                                           title="Website"
+                                           onclick="event.stopPropagation(); ${!hasWebsite ? 'return false;' : ''}">🌐</a>
+                                        <a href="${hasTelegram ? token.telegram : '#'}" 
+                                           target="_blank" 
+                                           class="social-link telegram ${!hasTelegram ? 'disabled' : ''}" 
+                                           title="Telegram"
+                                           onclick="event.stopPropagation(); ${!hasTelegram ? 'return false;' : ''}">💬</a>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <button class="dex-token-delete-btn" onclick="event.stopPropagation(); app.deleteDexToken(${slot});" title="Remove token">×</button>
@@ -1614,7 +1615,18 @@ class AlertApp {
         });
 
         // Build new HTML for tokens
-        const newHTML = tokens.map(token => this.getTokenCardHTML(token)).join('');
+        const newHTML = tokens.map(token => {
+            const cardHTML = this.getTokenCardHTML(token);
+            const matchedAlert = token.alertId ? this.alerts.find(a => a.id === token.alertId) : null;
+            const alertDescription = matchedAlert ? this.getAlertDescription(matchedAlert) : 'Unknown alert';
+            
+            return `
+                <div class="token-card-wrapper">
+                    <div class="token-alert-badge-above" title="${this.escapeHtml(alertDescription)}">${this.escapeHtml(alertDescription)}</div>
+                    ${cardHTML}
+                </div>
+            `;
+        }).join('');
 
         // Update existing cards in place to preserve hover states
         const tokensToUpdate = [];
@@ -1843,43 +1855,12 @@ class AlertApp {
         const totalVolumeSOL = (token.buyVolume || 0) + (token.sellVolume || 0);
         const totalVolumeUSD = totalVolumeSOL * this.solanaPriceUSD;
         
+        // Calculate marketcap
+        const marketCapUSD = token.marketCapUSD || (token.value || 0) * this.solanaPriceUSD;
+        const marketCapFormatted = marketCapUSD ? `$${marketCapUSD.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}` : '$0';
+        
         return `
             <div class="token-card" data-mint="${token.mint}">
-                <div class="token-image-wrapper">
-                    ${imageUrl ? 
-                        `<img src="" data-src="${imageUrl}" alt="${token.name || ''}" style="display: none; visibility: hidden;">
-                         <div class="token-image-placeholder" style="background: ${colors[colorIndex]};">${symbolText}</div>` :
-                        `<div class="token-image-placeholder" style="background: ${colors[colorIndex]};">${symbolText}</div>`
-                    }
-                </div>
-                <div class="token-header-info">
-                    <div class="token-name-large">${this.escapeHtml(token.name || 'Unknown')}</div>
-                    <div class="token-symbol-large">${this.escapeHtml(token.symbol || 'N/A')}</div>
-                </div>
-                <div class="token-stats">
-                    ${devBuyPercent ? `
-                    <div class="token-stat">
-                        <div class="token-stat-label">Dev Buy</div>
-                        <div class="token-stat-value">${devBuyPercent}%</div>
-                    </div>
-                    ` : ''}
-                    ${token.totalBuys !== undefined || token.totalSells !== undefined ? `
-                    <div class="token-stat">
-                        <div class="token-stat-label">Buys / Sells</div>
-                        <div class="token-stat-value">${token.totalBuys || 0} / ${token.totalSells || 0}</div>
-                    </div>
-                    ` : ''}
-                    ${token.buyVolume !== undefined || token.sellVolume !== undefined ? `
-                    <div class="token-stat">
-                        <div class="token-stat-label">Volume</div>
-                        <div class="token-stat-value">${this.formatUSD(totalVolumeUSD)}</div>
-                    </div>
-                    ` : ''}
-                    <div class="token-stat token-stat-alert">
-                        <div class="token-stat-label">Matched Alert</div>
-                        <div class="token-stat-value token-stat-alert-value" title="${this.escapeHtml(alertDescription)}">${this.escapeHtml(alertDescription)}</div>
-                    </div>
-                </div>
                 <div class="token-social-links">
                     <a href="${hasTwitter ? token.twitter : '#'}" 
                        target="_blank" 
@@ -1896,6 +1877,27 @@ class AlertApp {
                        class="social-link telegram ${!hasTelegram ? 'disabled' : ''}" 
                        title="Telegram"
                        onclick="event.stopPropagation(); ${!hasTelegram ? 'return false;' : ''}">💬</a>
+                </div>
+                <div class="token-main-content">
+                    <div class="token-header-row">
+                        <div class="token-image-wrapper">
+                            ${imageUrl ? 
+                                `<img src="" data-src="${imageUrl}" alt="${token.name || ''}" style="display: none; visibility: hidden;">
+                                 <div class="token-image-placeholder" style="background: ${colors[colorIndex]};">${symbolText}</div>` :
+                                `<div class="token-image-placeholder" style="background: ${colors[colorIndex]};">${symbolText}</div>`
+                            }
+                        </div>
+                        <div class="token-name-section">
+                            <div class="token-name-large">${this.escapeHtml(token.name || 'Unknown')}</div>
+                            <div class="token-symbol-large">${this.escapeHtml(token.symbol || 'N/A')}</div>
+                        </div>
+                        <div class="token-marketcap">${marketCapFormatted}</div>
+                    </div>
+                    <div class="token-metrics-row">
+                        ${devBuyPercent ? `<div class="token-metric">👤 ${devBuyPercent}%</div>` : ''}
+                        ${token.totalBuys !== undefined || token.totalSells !== undefined ? `<div class="token-metric">📊 ${token.totalBuys || 0} / ${token.totalSells || 0}</div>` : ''}
+                        ${token.buyVolume !== undefined || token.sellVolume !== undefined ? `<div class="token-metric">💹 ${this.formatUSD(totalVolumeUSD)}</div>` : ''}
+                    </div>
                 </div>
                 <button class="token-delete-btn" onclick="event.stopPropagation(); app.deleteMatchedToken('${token.mint}');" title="Delete token">
                     ×

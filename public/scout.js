@@ -466,15 +466,15 @@ class ScoutApp {
         this.updateSortButtons();
         this.startVolumeAutoResort(); // Start or stop auto-resort based on sort type
         
-        // For non-volume sorts, render immediately
-        // Volume sorts are handled by startVolumeAutoResort which sorts immediately on start
+        // For non-auto-resort sorts, render immediately
+        // Auto-resort sorts (volume and marketcap) are handled by startVolumeAutoResort which sorts immediately on start
         if (!this.isVolumeSort()) {
             this.renderTokens();
         }
     }
 
     isVolumeSort() {
-        return ['volume', 'volume1m', 'volume5m', 'volume15m'].includes(this.currentSort);
+        return ['volume', 'volume1m', 'volume5m', 'volume15m', 'marketcap'].includes(this.currentSort);
     }
 
     startVolumeAutoResort() {
@@ -702,8 +702,8 @@ class ScoutApp {
                                onclick="event.stopPropagation(); ${!hasTelegram ? 'return false;' : ''}">💬</a>
                         </div>
                     </div>
-                    <button class="dex-token-delete-btn" onclick="event.stopPropagation(); scoutApp.deleteToken('${token.mint}');" title="Remove token">×</button>
                 </div>
+                <button class="dex-token-delete-btn" onclick="event.stopPropagation(); scoutApp.deleteToken('${token.mint}');" title="Remove token">×</button>
             </div>
         `;
     }

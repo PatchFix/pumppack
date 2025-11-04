@@ -23,28 +23,29 @@
                         <span class="btn-icon">✎</span>
                         Edit Alerts
                     </button>
-                    <button type="button" class="btn btn-secondary" id="settingsBtn">
-                        <span class="btn-icon">⚙</span>
-                        Settings
-                    </button>
                     <button type="button" class="btn btn-secondary" id="dmAlertsBtn">
                         <span class="btn-icon">📱</span>
                         DM Alerts
-                    </button>
-                    <button type="button" class="btn btn-secondary help-btn" id="helpBtn" title="How alerts work">
-                        <span class="btn-icon">?</span>
                     </button>
                 </div>
             </div>
             <div class="status-container">
                 <div id="status" class="status-indicator">
                     <canvas id="statusCanvas" width="12" height="12"></canvas>
-                    <span class="status-text">Disconnected</span>
+                    <span class="status-text" style="display: none;">Disconnected</span>
                 </div>
                 <a href="index.html" class="home-btn" title="Return to Home">
                     <span class="btn-icon">🏠</span>
                     Home
                 </a>
+                <button type="button" class="home-btn" id="settingsBtn" title="Settings">
+                    <span class="btn-icon">⚙</span>
+                    Settings
+                </button>
+                <button type="button" class="home-btn" id="helpBtn" title="How alerts work">
+                    <span class="btn-icon">?</span>
+                    Help
+                </button>
             </div>
         </header>
 
