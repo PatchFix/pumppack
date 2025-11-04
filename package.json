@@ -1,0 +1,21 @@
+{
+  "name": "solana-transaction-modifier",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Modify Solana SPL Token transactions",
+  "main": "clank.js",
+  "scripts": {
+    "start": "node clank.js"
+  },
+  "dependencies": {
+    "@solana/spl-token": "^0.4.8",
+    "@solana/web3.js": "^1.95.2",
+    "axios": "^1.13.1",
+    "bs58": "^5.0.0",
+    "buffer-layout": "^1.2.2",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "puppeteer": "^23.11.1",
+    "socket.io": "^4.8.1"
+  }
+}

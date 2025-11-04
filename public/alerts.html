@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Alert System</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body data-theme="pump">
+    <canvas id="backgroundCanvas"></canvas>
+    
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-top">
+                <h1 class="app-title">Token Alert System</h1>
+                <div class="header-buttons">
+                    <button type="button" class="btn btn-primary" id="createAlertBtn">
+                        <span class="btn-icon">+</span>
+                        Create Alert
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="editAlertsBtn">
+                        <span class="btn-icon">✎</span>
+                        Edit Alerts
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="settingsBtn">
+                        <span class="btn-icon">⚙</span>
+                        Settings
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="dmAlertsBtn">
+                        <span class="btn-icon">📱</span>
+                        DM Alerts
+                    </button>
+                    <button type="button" class="btn btn-secondary help-btn" id="helpBtn" title="How alerts work">
+                        <span class="btn-icon">?</span>
+                    </button>
+                </div>
+            </div>
+            <div class="status-container">
+                <div id="status" class="status-indicator">
+                    <canvas id="statusCanvas" width="12" height="12"></canvas>
+                    <span class="status-text">Disconnected</span>
+                </div>
+                <a href="index.html" class="home-btn" title="Return to Home">
+                    <span class="btn-icon">🏠</span>
+                    Home
+                </a>
+            </div>
+        </header>
+
+        <div class="metas-ticker-container" id="metasTickerContainer" style="display: none;">
+            <div class="metas-ticker-label">Top Meta:</div>
+            <div class="metas-ticker-wrapper">
+                <div class="metas-ticker" id="metasTicker">
+                    <!-- Metas will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <main class="app-main">
+
+            <div class="split-layout">
+                <section class="alerts-list-section">
+                    <h2>Dex Alerts</h2>
+                    <div class="alerts-list" id="alertsContainer">
+                        <div class="dex-token-placeholder" data-slot="0">
+                            <div class="placeholder-content">
+                                <div class="placeholder-icon">+</div>
+                                <div class="placeholder-text">Click to add token</div>
+                            </div>
+                        </div>
+                        <div class="dex-token-placeholder" data-slot="1">
+                            <div class="placeholder-content">
+                                <div class="placeholder-icon">+</div>
+                                <div class="placeholder-text">Click to add token</div>
+                            </div>
+                        </div>
+                        <div class="dex-token-placeholder" data-slot="2">
+                            <div class="placeholder-content">
+                                <div class="placeholder-icon">+</div>
+                                <div class="placeholder-text">Click to add token</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="matched-tokens-section">
+                    <div class="section-header-with-action">
+                        <h2>Launch Alerts</h2>
+                        <button type="button" class="btn-clear-tokens" id="clearAllTokensBtn" title="Clear All Token Cards">
+                            Clear All
+                        </button>
+                    </div>
+                    <div class="tokens-grid" id="matchedTokensContainer">
+                        <div class="empty-state">
+                            <canvas id="emptyTokensCanvas" width="80" height="80"></canvas>
+                            <p>No matched launch alerts yet</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Edit Alerts Modal -->
+    <div class="modal-overlay" id="editAlertsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Edit Alerts</h2>
+                <button type="button" class="modal-close" id="closeEditModalBtn">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="alerts-tabs">
+                    <button class="alert-tab active" data-tab="token">Token Alerts</button>
+                    <button class="alert-tab" data-tab="developer">Developer Alerts</button>
+                    <button class="alert-tab" data-tab="social">Social Alerts</button>
+                </div>
+                
+                <div class="alerts-tab-content active" id="tokenAlertsTab">
+                    <div class="alerts-list-modal" id="tokenAlertsList">
+                        <div class="empty-state">
+                            <canvas id="emptyTokenCanvas" width="80" height="80"></canvas>
+                            <p>No dex alerts created yet</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="alerts-tab-content" id="developerAlertsTab">
+                    <div class="alerts-list-modal" id="developerAlertsList">
+                        <div class="empty-state">
+                            <canvas id="emptyDeveloperCanvas" width="80" height="80"></canvas>
+                            <p>No developer alerts created yet</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="alerts-tab-content" id="socialAlertsTab">
+                    <div class="alerts-list-modal" id="socialAlertsList">
+                        <div class="empty-state">
+                            <canvas id="emptySocialCanvas" width="80" height="80"></canvas>
+                            <p>No social alerts created yet</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Settings</h2>
+                <button type="button" class="modal-close" id="closeSettingsModalBtn">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="settings-section">
+                    <div class="settings-item">
+                        <label class="settings-label">On Token Click</label>
+                        <div class="settings-button-group">
+                            <button type="button" class="settings-option-btn" data-value="pumpfun">Pump.Fun</button>
+                            <button type="button" class="settings-option-btn" data-value="pumpfun-advanced">Pump.Fun Advanced</button>
+                            <button type="button" class="settings-option-btn" data-value="gmgn">GMGN</button>
+                            <button type="button" class="settings-option-btn" data-value="axiom">Axiom</button>
+                            <button type="button" class="settings-option-btn" data-value="copy-ca">Copy CA</button>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label for="alertVolume" class="settings-label">Alert Volume</label>
+                        <div class="volume-control">
+                            <input type="range" id="alertVolume" class="volume-slider" min="0" max="100" value="50" step="1">
+                            <span class="volume-value" id="volumeValue">50%</span>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label class="settings-label">Theme</label>
+                        <div class="settings-button-group theme-buttons">
+                            <button type="button" class="settings-option-btn theme-btn" data-theme="dark">Dark</button>
+                            <button type="button" class="settings-option-btn theme-btn" data-theme="ocean">Ocean</button>
+                            <button type="button" class="settings-option-btn theme-btn" data-theme="pump">Pump</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Alert Modal -->
+    <div class="modal-overlay" id="createAlertModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Create New Alert</h2>
+                <button type="button" class="modal-close" id="closeModalBtn">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <form id="alertForm" class="alert-form-modal">
+                    <div class="modal-button-groups">
+                        <div class="button-group">
+                            <div class="group-label">Name/Ticker Options</div>
+                            <button type="button" class="modal-action-btn" data-type="ticker-exact">
+                                <span class="btn-emoji">$</span>
+                                <span class="btn-label">Ticker is exactly</span>
+                                <span class="btn-arrow">›</span>
+                            </button>
+                            <button type="button" class="modal-action-btn" data-type="ticker-contains">
+                                <span class="btn-emoji">🔍</span>
+                                <span class="btn-label">Ticker contains phrase</span>
+                                <span class="btn-arrow">›</span>
+                            </button>
+                            <button type="button" class="modal-action-btn" data-type="name-exact">
+                                <span class="btn-emoji">📝</span>
+                                <span class="btn-label">Name is exactly</span>
+                                <span class="btn-arrow">›</span>
+                            </button>
+                            <button type="button" class="modal-action-btn" data-type="name-contains">
+                                <span class="btn-emoji">🔎</span>
+                                <span class="btn-label">Name contains phrase</span>
+                                <span class="btn-arrow">›</span>
+                            </button>
+                        </div>
+
+                        <div class="button-group">
+                            <div class="group-label">Developer Options</div>
+                            <button type="button" class="modal-action-btn" data-type="deployer-match">
+                                <span class="btn-emoji">👤</span>
+                                <span class="btn-label">Developer wallet matches</span>
+                                <span class="btn-arrow">›</span>
+                            </button>
+                                <button type="button" class="modal-action-btn" data-type="deployer-marketcap">
+                                    <span class="btn-emoji">💰</span>
+                                    <span class="btn-label">Developer has token above marketcap</span>
+                                    <span class="btn-arrow">›</span>
+                                </button>
+                                <button type="button" class="modal-action-btn" data-type="deployer-bonded">
+                                    <span class="btn-emoji">🔗</span>
+                                    <span class="btn-label">Developer has bonded % of tokens</span>
+                                    <span class="btn-arrow">›</span>
+                                </button>
+                        </div>
+
+                        <div class="button-group">
+                            <div class="group-label">Twitter/Website Options</div>
+                            <button type="button" class="modal-action-btn" data-type="twitter-handle">
+                                <span class="btn-emoji">🐦</span>
+                                <span class="btn-label">Twitter handle matches</span>
+                                <span class="btn-arrow">›</span>
+                            </button>
+                            <button type="button" class="modal-action-btn" data-type="website-contains">
+                                <span class="btn-emoji">🌐</span>
+                                <span class="btn-label">Website contains</span>
+                                <span class="btn-arrow">›</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <input type="hidden" id="alertType" required>
+                    
+                    <div class="modal-form-fields" id="formFieldsSection">
+                        <div class="form-field" id="valueGroup">
+                            <label id="valueLabel" for="alertValue">Value</label>
+                            <input type="text" id="alertValue" placeholder="Enter value..." required>
+                        </div>
+                        
+                        <div class="form-field" id="thresholdGroup" style="display: none;">
+                            <label id="alertThresholdLabel" for="alertThreshold">Threshold (USD)</label>
+                            <input type="number" id="alertThreshold" step="0.01" min="0" placeholder="0.00">
+                        </div>
+                        
+                        <div class="form-field" id="percentageGroup" style="display: none;">
+                            <label for="alertPercentage">Percentage (%)</label>
+                            <input type="number" id="alertPercentage" step="0.01" min="0" max="100" placeholder="0.00">
+                        </div>
+                        <div class="form-field" id="nameGroup" style="display: none;">
+                            <label for="alertName">Name (Optional)</label>
+                            <input type="text" id="alertName" placeholder="Enter alert name...">
+                        </div>
+                        
+                        <div class="modal-actions">
+                            <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Create Alert</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal-overlay" id="deleteConfirmModal">
+        <div class="modal-content delete-confirm-modal">
+            <div class="modal-header">
+                <h2 class="modal-title">Delete Alert</h2>
+                <button type="button" class="modal-close" id="closeDeleteConfirmBtn">×</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this alert?</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clear All Token Cards Confirmation Modal -->
+    <div class="modal-overlay" id="clearAllTokensConfirmModal">
+        <div class="modal-content delete-confirm-modal">
+            <div class="modal-header">
+                <h2 class="modal-title">Clear All Token Cards</h2>
+                <button type="button" class="modal-close" id="closeClearAllTokensConfirmBtn">×</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to clear all matched token cards? This will remove all displayed tokens but will not delete your saved alerts.</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" id="cancelClearAllTokensBtn">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmClearAllTokensBtn">Clear All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dex Token Input Modal -->
+    <div class="modal-overlay" id="dexTokenInputModal">
+        <div class="modal-content delete-confirm-modal">
+            <div class="modal-header">
+                <h2 class="modal-title">Add Token</h2>
+                <button type="button" class="modal-close" id="closeDexTokenInputBtn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-field">
+                    <label for="dexTokenMintInput">Token Mint Address</label>
+                    <input type="text" id="dexTokenMintInput" placeholder="Enter token mint address..." autocomplete="off">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" id="cancelDexTokenInputBtn">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmDexTokenInputBtn">Add Token</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DM Alerts Modal -->
+    <div class="modal-overlay" id="dmAlertsModal">
+        <div class="modal-content delete-confirm-modal">
+            <div class="modal-header">
+                <h2 class="modal-title">DM Alerts</h2>
+                <button type="button" class="modal-close" id="closeDmAlertsBtn">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="text-align: center; font-size: 1.1rem; line-height: 1.6;">
+                    <strong>Coming Soon</strong><br><br>
+                    Get alerts directly to Telegram or Discord.
+                </p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-primary" id="closeDmAlertsBtn2">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal-overlay" id="helpModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">How Alerts Work</h2>
+                <button type="button" class="modal-close" id="closeHelpBtn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="help-section">
+                    <h3>Dex Alerts</h3>
+                    <p>Dex Alerts monitor token payments on DexScreener. When you add a token mint address, the system will track payment statuses for that token and notify you when payments are processed, approved, or cancelled.</p>
+                </div>
+                
+                <div class="help-section">
+                    <h3>Token Launch Alerts</h3>
+                    <p>Token Launch Alerts monitor new token launches and match them against your criteria. When a new token matches your alert conditions, it will appear in the Launch Alerts section.</p>
+                </div>
+                
+                <div class="help-section">
+                    <h3>Developer Marketcap</h3>
+                    <div class="roadmap-section">
+                        <p>Track developers who currently have a token at a specific marketcap value. For example, setting "$100K" will alert you when a developer who has a token currently valued at $100K launches a new token. This helps identify developers with proven success.</p>
+                    </div>
+                </div>
+                
+                <div class="help-section">
+                    <h3>Contains Phrase</h3>
+                    <div class="roadmap-section">
+                        <p>Search for tokens with specific words in their name or ticker. For example, searching for "house" will match tokens like "House Token", "DogHouse", "House of Memes", etc. Perfect for finding tokens related to specific themes or keywords.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-primary" id="closeHelpBtn2">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
