@@ -652,11 +652,13 @@ class ScoutApp {
         const hasDexProfile = token.hasDexProfile ? ' has-dex-profile' : '';
         return `
             <div class="dex-token-card${completeClass}${hasDexProfile}" data-mint="${token.mint}">
-                <div class="token-image-wrapper-full">
-                    <div class="token-image-placeholder-full" style="width: 100%; height: 100%; border-radius: 8px; background: linear-gradient(135deg, #60a5fa, #4ade80); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 0.75rem; position: relative; z-index: 1;">
-                        ${symbolText}
+                <div class="token-image-section-full">
+                    <div class="token-image-wrapper-full">
+                        <div class="token-image-placeholder-full" style="width: 100%; height: 100%; border-radius: 8px; background: linear-gradient(135deg, #60a5fa, #4ade80); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 0.75rem; position: relative; z-index: 1;">
+                        </div>
+                        <img src="" data-src="${imageUrl}" style="display: none; visibility: hidden; position: absolute; top: 0; left: 0; z-index: 2;" alt="${token.name || 'Token'}">
                     </div>
-                    <img src="" data-src="${imageUrl}" style="display: none; visibility: hidden; position: absolute; top: 0; left: 0; z-index: 2;" alt="${token.name || 'Token'}">
+                    <div class="token-symbol-below">${symbolText}</div>
                 </div>
                 <div class="dex-token-content">
                     <div class="dex-token-top">
@@ -681,25 +683,28 @@ class ScoutApp {
                                 </div>
                             </div>
                         </div>
-                        <div class="token-social-links">
-                            <a href="${hasTwitter ? token.twitter : '#'}" 
-                               target="_blank" 
-                               rel="noopener noreferrer"
-                               class="social-link twitter ${!hasTwitter ? 'disabled' : ''}" 
-                               data-tooltip="Twitter"
-                               onclick="event.stopPropagation(); ${!hasTwitter ? 'return false;' : ''}">🐦</a>
-                            <a href="${hasWebsite ? token.website : '#'}" 
-                               target="_blank" 
-                               rel="noopener noreferrer"
-                               class="social-link website ${!hasWebsite ? 'disabled' : ''}" 
-                               data-tooltip="Website"
-                               onclick="event.stopPropagation(); ${!hasWebsite ? 'return false;' : ''}">🌐</a>
-                            <a href="${hasTelegram ? token.telegram : '#'}" 
-                               target="_blank" 
-                               rel="noopener noreferrer"
-                               class="social-link telegram ${!hasTelegram ? 'disabled' : ''}" 
-                               data-tooltip="Telegram"
-                               onclick="event.stopPropagation(); ${!hasTelegram ? 'return false;' : ''}">💬</a>
+                        <div class="token-social-section">
+                            <div class="token-social-links">
+                                <a href="${hasTwitter ? token.twitter : '#'}" 
+                                   target="_blank" 
+                                   rel="noopener noreferrer"
+                                   class="social-link twitter ${!hasTwitter ? 'disabled' : ''}" 
+                                   data-tooltip="Twitter"
+                                   onclick="event.stopPropagation(); ${!hasTwitter ? 'return false;' : ''}">🐦</a>
+                                <a href="${hasWebsite ? token.website : '#'}" 
+                                   target="_blank" 
+                                   rel="noopener noreferrer"
+                                   class="social-link website ${!hasWebsite ? 'disabled' : ''}" 
+                                   data-tooltip="Website"
+                                   onclick="event.stopPropagation(); ${!hasWebsite ? 'return false;' : ''}">🌐</a>
+                                <a href="${hasTelegram ? token.telegram : '#'}" 
+                                   target="_blank" 
+                                   rel="noopener noreferrer"
+                                   class="social-link telegram ${!hasTelegram ? 'disabled' : ''}" 
+                                   data-tooltip="Telegram"
+                                   onclick="event.stopPropagation(); ${!hasTelegram ? 'return false;' : ''}">💬</a>
+                            </div>
+                            <div class="dev-bonded-info">👑 ${token.devBonded ?? 0} / ${token.devTotal ?? 0}</div>
                         </div>
                     </div>
                 </div>
