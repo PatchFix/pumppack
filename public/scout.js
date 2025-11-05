@@ -1654,27 +1654,25 @@ class ScoutApp {
 
     async updateLiveStreamsTicker() {
         try {
-            const response = await fetch('https://frontend-api-v3.pump.fun/coins/currently-live');
+            const response = await fetch('/api/live-streams');
             if (!response.ok) {
                 console.error('Live streams API error:', response.status, response.statusText);
                 return;
             }
 
-            // Read response as text first to check if it's empty
-            const text = await response.text();
-            if (!text || text.trim().length === 0) {
-                console.log('Live streams API returned empty response');
-                this.currentLiveStreams = [];
-                this.renderLiveStreamsTicker();
+            let data;
+            try {
+                data = await response.json();
+            } catch (parseError) {
+                console.error('Failed to parse live streams JSON:', parseError);
                 return;
             }
 
-            let data;
-            try {
-                data = JSON.parse(text);
-            } catch (parseError) {
-                console.error('Failed to parse live streams JSON:', parseError);
-                console.log('Response text:', text.substring(0, 200));
+            // Check if data is empty
+            if (!data) {
+                console.log('Live streams API returned empty response');
+                this.currentLiveStreams = [];
+                this.renderLiveStreamsTicker();
                 return;
             }
 

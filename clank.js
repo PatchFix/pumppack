@@ -81,6 +81,23 @@ app.get('/api/localToken', (req, res) => {
     res.json({ localToken });
 });
 
+// API endpoint to proxy live streams (avoid CORS issues)
+app.get('/api/live-streams', async (req, res) => {
+    try {
+        const response = await axios.get('https://frontend-api-v3.pump.fun/coins/currently-live', {
+            headers: {
+                'Accept': 'application/json',
+            },
+            timeout: 10000
+        });
+        
+        res.json(response.data);
+    } catch (error) {
+        console.error('Error fetching live streams:', error.message);
+        res.status(500).json({ error: 'Failed to fetch live streams' });
+    }
+});
+
 // Proxy route for images to avoid CORS issues
 app.get('/proxy-image', async (req, res) => {
     const imageUrl = req.query.url;
