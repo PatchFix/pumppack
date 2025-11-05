@@ -400,6 +400,26 @@ button.home-btn {
     }
 }
 
+/* Social Link Tooltip */
+.social-tooltip {
+    position: fixed;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 10000;
+    pointer-events: none;
+    backdrop-filter: blur(10px);
+    animation: fadeInTooltip 0.2s ease-out;
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    max-width: 400px;
+    word-break: break-all;
+    overflow-wrap: break-word;
+}
+
 .metas-score {
     color: var(--accent-primary);
     font-size: 0.75rem;

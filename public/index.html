@@ -1663,26 +1663,11 @@
             btn.addEventListener('click', (e) => {
                 const href = btn.getAttribute('href');
                 
-                if (isTouchDevice) {
-                    // On mobile, if description is already showing for this button, allow navigation
-                    if (currentActiveButton === btn && appDescription.classList.contains('visible')) {
-                        if (href && href !== '#' && !href.includes('javascript:')) {
-                            return; // Allow default link behavior
-                        }
-                    } else {
-                        // Show description first
-                        if (href && href !== '#' && !href.includes('javascript:')) {
-                            e.preventDefault();
-                        }
-                        showAppDescription(btn);
-                    }
-                } else {
-                    // Desktop - show description on click
-                    if (href && href !== '#' && !href.includes('javascript:')) {
-                        e.preventDefault();
-                    }
-                    showAppDescription(btn);
+                // Always prevent navigation from app buttons - only allow via launch button
+                if (href && href !== '#' && !href.includes('javascript:')) {
+                    e.preventDefault();
                 }
+                showAppDescription(btn);
             });
 
             // Touch start for better mobile responsiveness

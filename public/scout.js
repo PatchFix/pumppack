@@ -686,19 +686,19 @@ class ScoutApp {
                                target="_blank" 
                                rel="noopener noreferrer"
                                class="social-link twitter ${!hasTwitter ? 'disabled' : ''}" 
-                               title="Twitter"
+                               data-tooltip="Twitter"
                                onclick="event.stopPropagation(); ${!hasTwitter ? 'return false;' : ''}">🐦</a>
                             <a href="${hasWebsite ? token.website : '#'}" 
                                target="_blank" 
                                rel="noopener noreferrer"
                                class="social-link website ${!hasWebsite ? 'disabled' : ''}" 
-                               title="Website"
+                               data-tooltip="Website"
                                onclick="event.stopPropagation(); ${!hasWebsite ? 'return false;' : ''}">🌐</a>
                             <a href="${hasTelegram ? token.telegram : '#'}" 
                                target="_blank" 
                                rel="noopener noreferrer"
                                class="social-link telegram ${!hasTelegram ? 'disabled' : ''}" 
-                               title="Telegram"
+                               data-tooltip="Telegram"
                                onclick="event.stopPropagation(); ${!hasTelegram ? 'return false;' : ''}">💬</a>
                         </div>
                     </div>
@@ -1113,6 +1113,22 @@ class ScoutApp {
                     requestAnimationFrame(() => {
                         this.renderTokens();
                     });
+                }
+            });
+            
+            // Add social link tooltip handlers
+            card.querySelectorAll('.social-link').forEach(link => {
+                if (!link.dataset.tooltipHandlerAttached) {
+                    link.dataset.tooltipHandlerAttached = 'true';
+                    const url = link.getAttribute('href');
+                    if (url && url !== '#') {
+                        link.addEventListener('mouseenter', (e) => {
+                            this.showSocialTooltip(e, url);
+                        });
+                        link.addEventListener('mouseleave', () => {
+                            this.hideSocialTooltip();
+                        });
+                    }
                 }
             });
         });
@@ -1842,6 +1858,64 @@ class ScoutApp {
 
     hideLiveStreamTooltip() {
         const tooltip = document.getElementById('liveStreamTooltip');
+        if (tooltip) {
+            tooltip.remove();
+        }
+    }
+
+    showSocialTooltip(event, url) {
+        // Remove existing tooltip if any
+        const existing = document.getElementById('socialTooltip');
+        if (existing) {
+            existing.remove();
+        }
+        
+        // Don't show tooltip for disabled links
+        if (event.currentTarget.classList.contains('disabled')) {
+            return;
+        }
+        
+        // Truncate Twitter/X.com status URLs
+        let displayUrl = url;
+        const twitterMatch = url.match(/^(https?:\/\/(?:twitter\.com|x\.com)\/[^\/]+\/status\/)/i);
+        if (twitterMatch) {
+            displayUrl = twitterMatch[1] + '...';
+        }
+        
+        // Create tooltip element
+        const tooltip = document.createElement('div');
+        tooltip.id = 'socialTooltip';
+        tooltip.className = 'social-tooltip';
+        tooltip.textContent = displayUrl;
+        
+        document.body.appendChild(tooltip);
+        
+        // Position tooltip near the icon
+        const rect = event.currentTarget.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        
+        // Position above the icon, centered
+        tooltip.style.left = `${rect.left + (rect.width / 2) - (tooltipRect.width / 2)}px`;
+        tooltip.style.top = `${rect.top - tooltipRect.height - 8}px`;
+        
+        // Ensure tooltip stays within viewport
+        const maxLeft = window.innerWidth - tooltipRect.width - 10;
+        const minLeft = 10;
+        if (parseInt(tooltip.style.left) > maxLeft) {
+            tooltip.style.left = `${maxLeft}px`;
+        }
+        if (parseInt(tooltip.style.left) < minLeft) {
+            tooltip.style.left = `${minLeft}px`;
+        }
+        
+        // If tooltip would go above viewport, show below instead
+        if (parseInt(tooltip.style.top) < 10) {
+            tooltip.style.top = `${rect.bottom + 8}px`;
+        }
+    }
+    
+    hideSocialTooltip() {
+        const tooltip = document.getElementById('socialTooltip');
         if (tooltip) {
             tooltip.remove();
         }
