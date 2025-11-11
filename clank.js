@@ -639,12 +639,13 @@ io.on('connection', (socket) => {
                     const updatedToken = prepareTokenForBroadcast(token);
                     socket.emit('token:update', updatedToken);
                     
-                    // Client-side alert checking (server-side checking kept for future Telegram bot)
-                    // if (twitterUpdated || websiteUpdated) {
-                    //     checkAlertsForToken(token).catch(error => {
-                    //         console.error(`Error checking alerts after metadata refresh for token ${mint}:`, error.message);
-                    //     });
-                    // }
+                    // Re-check user alerts when metadata is updated (twitter/website)
+                    // This ensures alerts that depend on metadata will trigger when it becomes available
+                    if (twitterUpdated || websiteUpdated) {
+                        checkUserAlertsForToken(token).catch(error => {
+                            console.error(`Error checking user alerts after metadata refresh for token ${mint}:`, error.message);
+                        });
+                    }
                 }
             }
         } catch (error) {
@@ -1553,8 +1554,13 @@ async function checkAlertsForToken(token) {
  */
 async function checkUserAlertsForToken(token) {
     try {
+        // Always read fresh client data from disk to ensure we have latest alerts
         const clients = readClients();
-        const triggeredUsers = new Set(); // Track users we've already notified for this token
+        
+        if (!token || !token.mint) {
+            console.warn('checkUserAlertsForToken: Invalid token data (missing mint)');
+            return;
+        }
         
         for (const [username, user] of Object.entries(clients)) {
             // Skip if user doesn't have Telegram linked
@@ -1574,63 +1580,63 @@ async function checkUserAlertsForToken(token) {
                     
                     const shouldTrigger = await checkAlert(alert, token);
                     if (shouldTrigger) {
-                        // Create unique key for this user-token-alert combination
+                        // Create unique key for this user-mint-alert combination
+                        // This ensures we only prevent duplicates for the same mint address
                         const alertKey = `${username}-${token.mint}-${alert.id}`;
                         
-                        // Only send notification if we haven't already sent it
+                        // Only send notification if we haven't already sent it for this exact mint-alert combination
                         if (!triggeredUserAlerts.has(alertKey)) {
                             triggeredUserAlerts.add(alertKey);
                             
-                            // Only send one notification per user per token (even if multiple alerts match)
-                            if (!triggeredUsers.has(username)) {
-                                triggeredUsers.add(username);
-                                
-                                // Format alert description
-                                const alertDesc = getAlertDescription(alert);
-                                const marketCapSol = token.marketCapSol || token.value || 0;
-                                const marketCapUSD = marketCapSol * solanaPriceUSD;
-                                const marketCapFormatted = marketCapUSD < 1000 
-                                    ? `$${marketCapUSD.toFixed(2)}` 
-                                    : marketCapUSD < 1000000 
-                                        ? `$${(marketCapUSD / 1000).toFixed(1)}K`
-                                        : `$${(marketCapUSD / 1000000).toFixed(2)}M`;
-                                
-                                // Create message
-                                const message = `🚨 Alert Matched!\n\n` +
-                                    `Alert: ${alertDesc}\n\n` +
-                                    `Token: ${token.name || 'Unknown'} (${token.symbol || 'UNKNOWN'})\n` +
-                                    `Market Cap: ${marketCapFormatted}\n` +
-                                    `Pump.Fun: https://pump.fun/${token.mint}`;
-                                
-                                // Create inline keyboard with buttons
-                                const inlineKeyboard = {
-                                    inline_keyboard: [
-                                        [
-                                            { text: 'Pump.Fun', url: `https://pump.fun/${token.mint}` },
-                                            { text: 'Pump Advanced', url: `https://pump.fun/advanced/coin/${token.mint}` }
-                                        ],
-                                        [
-                                            { text: 'GMGN', url: `https://gmgn.ai/sol/token/${token.mint}` },
-                                            { text: 'Axiom', url: `https://axiom.trade/t/${token.mint}` }
-                                        ]
+                            console.log(`[Alert Check] Match found: User ${username}, Alert ${alert.id} (${alert.type}), Token ${token.mint} (${token.name || 'Unknown'})`);
+                            
+                            // Format alert description
+                            const alertDesc = getAlertDescription(alert);
+                            const marketCapSol = token.marketCapSol || token.value || 0;
+                            const marketCapUSD = marketCapSol * solanaPriceUSD;
+                            const marketCapFormatted = marketCapUSD < 1000 
+                                ? `$${marketCapUSD.toFixed(2)}` 
+                                : marketCapUSD < 1000000 
+                                    ? `$${(marketCapUSD / 1000).toFixed(1)}K`
+                                    : `$${(marketCapUSD / 1000000).toFixed(2)}M`;
+                            
+                            // Create message
+                            const message = `🚨 Alert Matched!\n\n` +
+                                `Alert: ${alertDesc}\n\n` +
+                                `Token: ${token.name || 'Unknown'} (${token.symbol || 'UNKNOWN'})\n` +
+                                `Market Cap: ${marketCapFormatted}\n` +
+                                `Pump.Fun: https://pump.fun/${token.mint}`;
+                            
+                            // Create inline keyboard with buttons
+                            const inlineKeyboard = {
+                                inline_keyboard: [
+                                    [
+                                        { text: 'Pump.Fun', url: `https://pump.fun/${token.mint}` },
+                                        { text: 'Pump Advanced', url: `https://pump.fun/advanced/coin/${token.mint}` }
+                                    ],
+                                    [
+                                        { text: 'GMGN', url: `https://gmgn.ai/sol/token/${token.mint}` },
+                                        { text: 'Axiom', url: `https://axiom.trade/t/${token.mint}` }
                                     ]
-                                };
-                                
-                                // Send Telegram message with inline keyboard
-                                await axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
-                                    chat_id: user.telegramChatId,
-                                    text: message,
-                                    parse_mode: 'HTML',
-                                    disable_web_page_preview: false,
-                                    reply_markup: inlineKeyboard
-                                }).catch(err => {
-                                    console.error(`Error sending Telegram message to ${username}:`, err.message);
-                                });
-                                
-                                console.log(`📱 Telegram alert sent to ${username} for token ${token.name} (${token.symbol})`);
-                            }
+                                ]
+                            };
+                            
+                            // Send Telegram message with inline keyboard
+                            await axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
+                                chat_id: user.telegramChatId,
+                                text: message,
+                                parse_mode: 'HTML',
+                                disable_web_page_preview: false,
+                                reply_markup: inlineKeyboard
+                            }).catch(err => {
+                                console.error(`Error sending Telegram message to ${username}:`, err.message);
+                            });
+                            
+                            console.log(`📱 Telegram alert sent to ${username} for token ${token.name} (${token.symbol}) - Alert: ${alert.id}`);
+                        } else {
+                            console.log(`[Alert Check] Duplicate prevented: ${alertKey} already triggered`);
                         }
-                        break; // Move to next user after finding a match
+                        // Continue checking other alerts - don't break, allow multiple alerts to trigger
                     }
                 } catch (error) {
                     console.error(`Error checking alert ${alert.id} for user ${username}:`, error.message);
@@ -1854,9 +1860,22 @@ ws.send(JSON.stringify(payload));
         });
         
         // Check user alerts and send Telegram notifications
+        // Add a small delay to allow metadata to start loading, then check again when metadata is available
         checkUserAlertsForToken(tokenData).catch(error => {
             console.error(`Error checking user alerts for token ${response.mint}:`, error.message);
         });
+        
+        // Also check alerts again after a delay to catch metadata-dependent alerts
+        // Metadata is fetched asynchronously, so we need to re-check when it becomes available
+        setTimeout(() => {
+            // Re-read token from storage/cache to get updated metadata
+            const updatedToken = STORE_TOKENS ? tokens.get(response.mint) : tokenCache.get(response.mint);
+            if (updatedToken) {
+                checkUserAlertsForToken(updatedToken).catch(error => {
+                    console.error(`Error checking user alerts (delayed) for token ${response.mint}:`, error.message);
+                });
+            }
+        }, 5000); // Check again after 5 seconds when metadata should be available
 
         // Helper function to update token and log completion
         // Works even when STORE_TOKENS is false by using tokenCache
@@ -1942,12 +1961,13 @@ ws.send(JSON.stringify(payload));
                 // Always broadcast token update to all connected clients
                 broadcastTokenUpdate(token);
                 
-                // Client-side alert checking (server-side checking kept for future Telegram bot)
-                // if (twitterUpdated || websiteUpdated) {
-                //     checkAlertsForToken(token).catch(error => {
-                //         console.error(`Error checking alerts after metadata update for token ${response.mint}:`, error.message);
-                //     });
-                // }
+                // Re-check user alerts when metadata is updated (twitter/website)
+                // This ensures alerts that depend on metadata will trigger when it becomes available
+                if (twitterUpdated || websiteUpdated) {
+                    checkUserAlertsForToken(token).catch(error => {
+                        console.error(`Error checking user alerts after metadata update (URI) for token ${response.mint}:`, error.message);
+                    });
+                }
             }
         };
 
@@ -2022,12 +2042,13 @@ ws.send(JSON.stringify(payload));
                 // Always broadcast token update to all connected clients
                 broadcastTokenUpdate(token);
                 
-                // Client-side alert checking (server-side checking kept for future Telegram bot)
-                // if (twitterUpdated || websiteUpdated) {
-                //     checkAlertsForToken(token).catch(error => {
-                //         console.error(`Error checking alerts after metadata update for token ${response.mint}:`, error.message);
-                //     });
-                // }
+                // Re-check user alerts when metadata is updated (twitter/website)
+                // This ensures alerts that depend on metadata will trigger when it becomes available
+                if (twitterUpdated || websiteUpdated) {
+                    checkUserAlertsForToken(token).catch(error => {
+                        console.error(`Error checking user alerts after metadata update (API) for token ${response.mint}:`, error.message);
+                    });
+                }
             }
         };
 
