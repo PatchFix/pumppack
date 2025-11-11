@@ -909,6 +909,11 @@ class AlertApp {
             this.saveAlertsToStorage();
             this.renderAlerts();
             
+            // Check sync status if logged in
+            if (this.currentUser) {
+                this.checkAlertsSync();
+            }
+            
             // Reset and close modal
             this.resetForm();
             this.closeCreateModal();
@@ -1584,6 +1589,11 @@ class AlertApp {
                 this.renderAlertsInModal();
             }
             this.pendingDeleteId = null;
+            
+            // Check sync status if logged in
+            if (this.currentUser) {
+                this.checkAlertsSync();
+            }
         }
         this.closeDeleteConfirmModal();
     }
@@ -1618,6 +1628,11 @@ class AlertApp {
             // Update modal if open
             if (this.editAlertsModal.classList.contains('active')) {
                 this.renderAlertsInModal();
+            }
+            
+            // Check sync status if logged in
+            if (this.currentUser) {
+                this.checkAlertsSync();
             }
         }
     }
@@ -2443,6 +2458,9 @@ class AlertApp {
                 // Check Telegram status and update button
                 this.checkTelegramStatus();
                 
+                // Check if alerts are synced
+                this.checkAlertsSync();
+                
                 // Clear form
                 if (this.usernameInput) this.usernameInput.value = '';
                 if (this.passwordInput) this.passwordInput.value = '';
@@ -2504,6 +2522,9 @@ class AlertApp {
                 // Check Telegram status and update button
                 this.checkTelegramStatus();
                 
+                // Check if alerts are synced
+                this.checkAlertsSync();
+                
                 // Clear login form
                 if (this.loginUsername) this.loginUsername.value = '';
                 if (this.loginPassword) this.loginPassword.value = '';
@@ -2543,6 +2564,8 @@ class AlertApp {
             
             if (response.ok && data.success) {
                 this.showToast('Alerts saved successfully!', 'success');
+                // Update sync status after saving
+                this.checkAlertsSync();
             } else {
                 this.showToast(data.error || 'Failed to save alerts', 'error');
             }
@@ -2615,22 +2638,92 @@ class AlertApp {
         return false;
     }
     
+    async checkAlertsSync() {
+        if (!this.currentUser) return;
+        
+        try {
+            // Get server-side alerts
+            const response = await fetch('/api/users/get-alerts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: this.currentUser.username,
+                    password: this.currentUser.password
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                const serverAlerts = data.alerts || [];
+                const clientAlerts = this.alerts || [];
+                
+                // Compare alerts (simple comparison by ID and count)
+                const serverAlertIds = new Set(serverAlerts.map(a => a.id));
+                const clientAlertIds = new Set(clientAlerts.map(a => a.id));
+                
+                const isSynced = serverAlerts.length === clientAlerts.length &&
+                    serverAlerts.every(alert => clientAlertIds.has(alert.id)) &&
+                    clientAlerts.every(alert => serverAlertIds.has(alert.id));
+                
+                this.updateUnsyncedAlertsUI(!isSynced);
+            }
+        } catch (error) {
+            console.error('Error checking alerts sync:', error);
+        }
+    }
+    
+    updateUnsyncedAlertsUI(unsynced) {
+        const notice = document.getElementById('unsyncedAlertsNotice');
+        const badge = document.getElementById('linkTelegramBadge');
+        const dmAlertsBtn = this.dmAlertsBtn;
+        
+        if (notice) {
+            notice.style.display = unsynced ? 'block' : 'none';
+        }
+        
+        if (badge) {
+            badge.style.display = unsynced ? 'inline-block' : 'none';
+        }
+        
+        // Add badge to DM Alerts button in header
+        if (dmAlertsBtn) {
+            if (unsynced) {
+                if (!dmAlertsBtn.querySelector('.alert-badge')) {
+                    const headerBadge = document.createElement('span');
+                    headerBadge.className = 'alert-badge';
+                    headerBadge.textContent = '!';
+                    headerBadge.style.cssText = 'margin-left: 0.5rem; padding: 0.125rem 0.375rem; background: var(--warning); color: var(--text-primary); border-radius: 12px; font-size: 0.75rem; font-weight: 600;';
+                    dmAlertsBtn.appendChild(headerBadge);
+                }
+            } else {
+                const existingBadge = dmAlertsBtn.querySelector('.alert-badge');
+                if (existingBadge) {
+                    existingBadge.remove();
+                }
+            }
+        }
+    }
+    
     updateTelegramButtonState(linked) {
         if (!this.linkTelegramBtn) return;
         
         if (linked) {
-            this.linkTelegramBtn.textContent = 'Telegram Linked ✓';
+            this.linkTelegramBtn.innerHTML = '<span>Telegram Linked ✓</span>';
             this.linkTelegramBtn.disabled = true;
             this.linkTelegramBtn.style.opacity = '1';
             this.linkTelegramBtn.style.cursor = 'default';
             this.linkTelegramBtn.classList.add('btn-success');
         } else {
-            this.linkTelegramBtn.textContent = 'Link to Telegram';
+            this.linkTelegramBtn.innerHTML = '<span>Link to Telegram</span>';
             this.linkTelegramBtn.disabled = false;
             this.linkTelegramBtn.style.opacity = '1';
             this.linkTelegramBtn.style.cursor = 'pointer';
             this.linkTelegramBtn.classList.remove('btn-success');
         }
+        
+        // Re-add badge if needed
+        this.checkAlertsSync();
     }
     
     logoutUser() {

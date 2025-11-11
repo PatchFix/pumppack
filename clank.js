@@ -1602,12 +1602,27 @@ async function checkUserAlertsForToken(token) {
                                     `Market Cap: ${marketCapFormatted}\n` +
                                     `Pump.Fun: https://pump.fun/${token.mint}`;
                                 
-                                // Send Telegram message
+                                // Create inline keyboard with buttons
+                                const inlineKeyboard = {
+                                    inline_keyboard: [
+                                        [
+                                            { text: 'Pump.Fun', url: `https://pump.fun/${token.mint}` },
+                                            { text: 'Pump Advanced', url: `https://pump.fun/advanced/coin/${token.mint}` }
+                                        ],
+                                        [
+                                            { text: 'GMGN', url: `https://gmgn.ai/sol/token/${token.mint}` },
+                                            { text: 'Axiom', url: `https://axiom.trade/t/${token.mint}` }
+                                        ]
+                                    ]
+                                };
+                                
+                                // Send Telegram message with inline keyboard
                                 await axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
                                     chat_id: user.telegramChatId,
                                     text: message,
                                     parse_mode: 'HTML',
-                                    disable_web_page_preview: false
+                                    disable_web_page_preview: false,
+                                    reply_markup: inlineKeyboard
                                 }).catch(err => {
                                     console.error(`Error sending Telegram message to ${username}:`, err.message);
                                 });
