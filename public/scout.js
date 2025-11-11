@@ -238,6 +238,10 @@ class ScoutApp {
                 }
                 // Initialize hasDexProfile flag
                 token.hasDexProfile = false;
+                // Initialize allTimeHigh if not present (fallback to current marketcap)
+                if (!token.allTimeHigh) {
+                    token.allTimeHigh = token.value || token.marketCapSol || 0;
+                }
                 this.tokens.set(token.mint, token);
             });
             this.renderTokens();
@@ -251,6 +255,10 @@ class ScoutApp {
             }
             // Initialize hasDexProfile flag
             tokenData.hasDexProfile = false;
+            // Initialize allTimeHigh if not present (fallback to current marketcap)
+            if (!tokenData.allTimeHigh) {
+                tokenData.allTimeHigh = tokenData.value || tokenData.marketCapSol || 0;
+            }
             this.tokens.set(tokenData.mint, tokenData);
             this.renderTokens();
         });
@@ -259,6 +267,10 @@ class ScoutApp {
         this.socket.on('token:update', (tokenData) => {
             const existingToken = this.tokens.get(tokenData.mint);
             if (existingToken) {
+                // Preserve allTimeHigh if not in update (should always be included, but safety check)
+                if (!tokenData.allTimeHigh && existingToken.allTimeHigh) {
+                    tokenData.allTimeHigh = existingToken.allTimeHigh;
+                }
                 // Track previous values to detect new trades
                 const previousBuys = existingToken.totalBuys || 0;
                 const previousSells = existingToken.totalSells || 0;
@@ -648,6 +660,23 @@ class ScoutApp {
         const imageUrl = token.mint ? `https://images.pump.fun/coin-image/${token.mint}?variant=86x86` : null;
         const symbolText = (token.symbol || 'UNKNOWN').substring(0, 4).toUpperCase();
         
+        // Progress bar calculations (30 SOL to 420 SOL range)
+        const MIN_SOL = 30;
+        const MAX_SOL = 420;
+        const currentMarketCapSol = token.value || 0;
+        const athMarketCapSol = token.allTimeHigh || currentMarketCapSol;
+        
+        // Convert to USD for display
+        const minUSD = MIN_SOL * this.solanaPriceUSD;
+        const maxUSD = MAX_SOL * this.solanaPriceUSD;
+        const currentUSD = currentMarketCapSol * this.solanaPriceUSD;
+        const athUSD = athMarketCapSol * this.solanaPriceUSD;
+        
+        // Calculate progress percentages (0-100%)
+        const range = MAX_SOL - MIN_SOL;
+        const currentProgress = Math.max(0, Math.min(100, ((currentMarketCapSol - MIN_SOL) / range) * 100));
+        const athProgress = Math.max(0, Math.min(100, ((athMarketCapSol - MIN_SOL) / range) * 100));
+        
         const completeClass = token.complete ? ' token-complete' : '';
         const hasDexProfile = token.hasDexProfile ? ' has-dex-profile' : '';
         return `
@@ -663,6 +692,18 @@ class ScoutApp {
                 <div class="dex-token-content">
                     <div class="dex-token-top">
                         <div class="token-name-large">${token.name || 'Unknown'}</div>
+                    </div>
+                    <div class="token-progress-section">
+                        <div class="token-progress-bar-container">
+                            <div class="token-progress-bar" data-field="progress">
+                                <div class="token-progress-fill" style="width: ${currentProgress}%;" data-field="progress-fill"></div>
+                                ${athProgress > currentProgress ? `<div class="token-progress-ath-marker" style="left: ${athProgress}%;" data-field="ath-marker" title="All Time High: ${this.formatUSD(athUSD)}"></div>` : ''}
+                            </div>
+                            <div class="token-progress-labels">
+                                <span class="token-progress-label-min">${this.formatUSD(minUSD)}</span>
+                                <span class="token-progress-label-max">${this.formatUSD(maxUSD)}</span>
+                            </div>
+                        </div>
                     </div>
                     <div class="dex-token-bottom">
                         <div class="token-stats-mini">
@@ -1067,6 +1108,44 @@ class ScoutApp {
         const volumeValue = card.querySelector('[data-field="volume"]');
         if (volumeValue) {
             volumeValue.textContent = this.formatUSD(totalVolumeUSD);
+        }
+        
+        // Update progress bar
+        const MIN_SOL = 30;
+        const MAX_SOL = 420;
+        const currentMarketCapSol = token.value || 0;
+        const athMarketCapSol = token.allTimeHigh || currentMarketCapSol;
+        const range = MAX_SOL - MIN_SOL;
+        const currentProgress = Math.max(0, Math.min(100, ((currentMarketCapSol - MIN_SOL) / range) * 100));
+        const athProgress = Math.max(0, Math.min(100, ((athMarketCapSol - MIN_SOL) / range) * 100));
+        const athUSD = athMarketCapSol * this.solanaPriceUSD;
+        
+        const progressFill = card.querySelector('[data-field="progress-fill"]');
+        if (progressFill) {
+            progressFill.style.width = `${currentProgress}%`;
+        }
+        
+        // Update or create ATH marker
+        let athMarker = card.querySelector('[data-field="ath-marker"]');
+        if (athProgress > currentProgress) {
+            if (!athMarker) {
+                // Create ATH marker if it doesn't exist
+                const progressBar = card.querySelector('[data-field="progress"]');
+                if (progressBar) {
+                    athMarker = document.createElement('div');
+                    athMarker.className = 'token-progress-ath-marker';
+                    athMarker.setAttribute('data-field', 'ath-marker');
+                    athMarker.setAttribute('title', `All Time High: ${this.formatUSD(athUSD)}`);
+                    progressBar.appendChild(athMarker);
+                }
+            }
+            if (athMarker) {
+                athMarker.style.left = `${athProgress}%`;
+                athMarker.setAttribute('title', `All Time High: ${this.formatUSD(athUSD)}`);
+            }
+        } else if (athMarker) {
+            // Remove ATH marker if current price is at or above ATH
+            athMarker.remove();
         }
         
         // Update buys (in Tx section)

@@ -1976,6 +1976,73 @@ body[data-theme="pump"] .settings-option-btn.active:hover {
     min-width: 0;
 }
 
+.token-progress-section {
+    width: 100%;
+    margin: 0.5rem 0;
+}
+
+.token-progress-bar-container {
+    width: 100%;
+}
+
+.token-progress-bar {
+    position: relative;
+    width: 100%;
+    height: 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    overflow: visible;
+    margin-bottom: 0.25rem;
+}
+
+.token-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-primary), var(--success));
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    position: relative;
+    z-index: 1;
+}
+
+.token-progress-ath-marker {
+    position: absolute;
+    top: -4px;
+    width: 2px;
+    height: 16px;
+    background: #fbbf24;
+    border-radius: 1px;
+    z-index: 2;
+    box-shadow: 0 0 4px rgba(251, 191, 36, 0.6);
+    transform: translateX(-50%);
+}
+
+.token-progress-ath-marker::before {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid #fbbf24;
+}
+
+.token-progress-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.625rem;
+    color: var(--text-muted);
+    margin-top: 0.125rem;
+}
+
+.token-progress-label-min,
+.token-progress-label-max {
+    font-weight: 500;
+}
+
 .dex-token-bottom {
     display: flex;
     align-items: center;

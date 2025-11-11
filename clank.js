@@ -207,6 +207,7 @@ io.on('connection', (socket) => {
                         website: null,
                         telegram: null,
                         marketCapSol: apiTokenData.usd_market_cap_sol || 0,
+                        allTimeHigh: apiTokenData.usd_market_cap_sol || 0, // Initialize ATH
                         totalBuys: 0,
                         totalSells: 0,
                         buyVolume: 0,
@@ -1275,6 +1276,7 @@ ws.on('open', function open() {
             telegram: null,
             // Trade tracking fields
             marketCapSol: response.marketCapSol,
+            allTimeHigh: response.marketCapSol, // Initialize ATH to current marketcap
             totalBuys: 0,
             totalSells: 0,
             buyVolume: 0,
@@ -1370,6 +1372,7 @@ ws.send(JSON.stringify(payload));
                             website: null,
                             telegram: null,
                             marketCapSol: apiTokenData.usd_market_cap_sol || 0,
+                            allTimeHigh: apiTokenData.usd_market_cap_sol || 0, // Initialize ATH
                             totalBuys: 0,
                             totalSells: 0,
                             buyVolume: 0,
@@ -1457,6 +1460,7 @@ ws.send(JSON.stringify(payload));
                     website: null,
                     telegram: null,
                     marketCapSol: tokenData.usd_market_cap_sol || 0,
+                    allTimeHigh: tokenData.usd_market_cap_sol || 0, // Initialize ATH
                     totalBuys: 0,
                     totalSells: 0,
                     buyVolume: 0,
@@ -1585,6 +1589,11 @@ ws.send(JSON.stringify(payload));
         if (response.marketCapSol !== undefined) {
             token.marketCapSol = response.marketCapSol;
             token.value = response.marketCapSol; // Also update value field for consistency
+            
+            // Update All Time High if current marketcap exceeds it
+            if (!token.allTimeHigh || response.marketCapSol > token.allTimeHigh) {
+                token.allTimeHigh = response.marketCapSol;
+            }
             
             // Save back to cache if not storing
             if (!STORE_TOKENS) {
