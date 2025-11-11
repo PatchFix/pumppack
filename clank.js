@@ -35,6 +35,10 @@ const lastTransactionTime = new Map();
 const alerts = new Map();
 let alertIdCounter = 1;
 
+// Track which user alerts have been triggered (to avoid duplicate notifications)
+// Format: username-mint-alertId
+const triggeredUserAlerts = new Set();
+
 // Configuration: Store tokens in memory and subscribe to trades
 // If false, only broadcast to connected clients without storing
 const STORE_TOKENS = true;
@@ -1469,10 +1473,11 @@ async function checkAlert(alert, token) {
         
         case 'deployer-marketcap':
             // Check if this token's marketcap (in USD) meets the threshold
-            if (!token.marketCapSol || !solanaPriceUSD || alert.threshold === undefined) {
+            const marketCapSol = token.marketCapSol || token.value || 0;
+            if (!marketCapSol || !solanaPriceUSD || alert.threshold === undefined) {
                 return false;
             }
-            const marketCapUSD = token.marketCapSol * solanaPriceUSD;
+            const marketCapUSD = marketCapSol * solanaPriceUSD;
             return marketCapUSD >= alert.threshold;
         
         case 'deployer-bonded':
@@ -1539,6 +1544,116 @@ async function checkAlertsForToken(token) {
         } catch (error) {
             console.error(`Error checking alert ${alert.id}:`, error.message);
         }
+    }
+}
+
+/**
+ * Check user alerts from profiles and send Telegram notifications
+ * @param {Object} token - The token data
+ */
+async function checkUserAlertsForToken(token) {
+    try {
+        const clients = readClients();
+        const triggeredUsers = new Set(); // Track users we've already notified for this token
+        
+        for (const [username, user] of Object.entries(clients)) {
+            // Skip if user doesn't have Telegram linked
+            if (!user.telegramLinked || !user.telegramChatId) {
+                continue;
+            }
+            
+            // Skip if user has no alerts
+            if (!user.alerts || !Array.isArray(user.alerts) || user.alerts.length === 0) {
+                continue;
+            }
+            
+            // Check each alert for this user
+            for (const alert of user.alerts) {
+                try {
+                    if (!alert.enabled) continue;
+                    
+                    const shouldTrigger = await checkAlert(alert, token);
+                    if (shouldTrigger) {
+                        // Create unique key for this user-token-alert combination
+                        const alertKey = `${username}-${token.mint}-${alert.id}`;
+                        
+                        // Only send notification if we haven't already sent it
+                        if (!triggeredUserAlerts.has(alertKey)) {
+                            triggeredUserAlerts.add(alertKey);
+                            
+                            // Only send one notification per user per token (even if multiple alerts match)
+                            if (!triggeredUsers.has(username)) {
+                                triggeredUsers.add(username);
+                                
+                                // Format alert description
+                                const alertDesc = getAlertDescription(alert);
+                                const marketCapSol = token.marketCapSol || token.value || 0;
+                                const marketCapUSD = marketCapSol * solanaPriceUSD;
+                                const marketCapFormatted = marketCapUSD < 1000 
+                                    ? `$${marketCapUSD.toFixed(2)}` 
+                                    : marketCapUSD < 1000000 
+                                        ? `$${(marketCapUSD / 1000).toFixed(1)}K`
+                                        : `$${(marketCapUSD / 1000000).toFixed(2)}M`;
+                                
+                                // Create message
+                                const message = `🚨 Alert Matched!\n\n` +
+                                    `Alert: ${alertDesc}\n\n` +
+                                    `Token: ${token.name || 'Unknown'} (${token.symbol || 'UNKNOWN'})\n` +
+                                    `Market Cap: ${marketCapFormatted}\n` +
+                                    `Pump.Fun: https://pump.fun/${token.mint}`;
+                                
+                                // Send Telegram message
+                                await axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
+                                    chat_id: user.telegramChatId,
+                                    text: message,
+                                    parse_mode: 'HTML',
+                                    disable_web_page_preview: false
+                                }).catch(err => {
+                                    console.error(`Error sending Telegram message to ${username}:`, err.message);
+                                });
+                                
+                                console.log(`📱 Telegram alert sent to ${username} for token ${token.name} (${token.symbol})`);
+                            }
+                        }
+                        break; // Move to next user after finding a match
+                    }
+                } catch (error) {
+                    console.error(`Error checking alert ${alert.id} for user ${username}:`, error.message);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error checking user alerts:', error);
+    }
+}
+
+/**
+ * Get a human-readable description of an alert
+ * @param {Object} alert - The alert configuration
+ * @returns {string} Description of the alert
+ */
+function getAlertDescription(alert) {
+    switch(alert.type) {
+        case 'ticker-exact':
+            return `Ticker is exactly "${alert.value}"`;
+        case 'ticker-contains':
+            return `Ticker contains "${alert.value}"`;
+        case 'name-exact':
+            return `Name is exactly "${alert.value}"`;
+        case 'name-contains':
+            return `Name contains "${alert.value}"`;
+        case 'deployer-match':
+            return `Developer wallet matches "${alert.value.substring(0, 8)}..."`;
+        case 'deployer-marketcap':
+            return `Developer has token above $${alert.threshold?.toLocaleString() || 'N/A'}`;
+        case 'deployer-bonded':
+            return `Developer has bonded ${alert.percentage || 'N/A'}% of tokens`;
+        case 'twitter-handle':
+            return `Twitter handle matches "${alert.value}"`;
+        case 'website-contains':
+            return `Website contains "${alert.value}"`;
+        default:
+            return `${alert.type}: ${alert.value || 'N/A'}`;
     }
 }
 
@@ -1723,10 +1838,10 @@ ws.send(JSON.stringify(payload));
             timestamp: Date.now()
         });
         
-        // Client-side alert checking (server-side checking kept for future Telegram bot)
-        // checkAlertsForToken(tokenData).catch(error => {
-        //     console.error(`Error checking alerts for token ${response.mint}:`, error.message);
-        // });
+        // Check user alerts and send Telegram notifications
+        checkUserAlertsForToken(tokenData).catch(error => {
+            console.error(`Error checking user alerts for token ${response.mint}:`, error.message);
+        });
 
         // Helper function to update token and log completion
         // Works even when STORE_TOKENS is false by using tokenCache
