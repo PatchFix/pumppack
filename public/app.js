@@ -3093,9 +3093,27 @@ let app;
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         app = new AlertApp();
+        // Check if we should open the modal based on URL hash
+        if (window.location.hash === '#login' || window.location.hash === '#profile') {
+            // Small delay to ensure modal is ready
+            setTimeout(() => {
+                if (app && app.openDmAlertsModal) {
+                    app.openDmAlertsModal();
+                }
+            }, 100);
+        }
     });
 } else {
     app = new AlertApp();
+    // Check if we should open the modal based on URL hash
+    if (window.location.hash === '#login' || window.location.hash === '#profile') {
+        // Small delay to ensure modal is ready
+        setTimeout(() => {
+            if (app && app.openDmAlertsModal) {
+                app.openDmAlertsModal();
+            }
+        }, 100);
+    }
 }
 
 // Make functions globally available

@@ -85,8 +85,19 @@ class ScoutApp {
         this.dexScreenerCheckInterval = null; // Interval for checking DexScreener profiles
         this.dexPaymentCheckInterval = null; // Interval for checking DexScreener payment status
         this.dexPaymentStatuses = new Map(); // Track payment statuses already triggered (mint -> Set of statuses)
-        this.liveStreamsInterval = null; // Interval for checking live streams
-        this.currentLiveStreams = []; // Store current live streams
+        this.tokenEvents = []; // Store token events for ticker
+        this.tokenEventsTickerContainer = null; // Token events ticker container
+        this.tokenEventsTicker = null; // Token events ticker element
+        this.topLiveStreamSlot = null; // Top live stream slot container
+        this.topLiveStreamContent = null; // Top live stream content element
+        this.currentTopStream = null; // Current top stream data
+        this.previousTopStreamMint = null; // Track previous top stream mint to detect changes
+        this.ogEventCache = new Map(); // Cache for OG event detection (twitter -> Set of mints)
+        this.processedCTOs = new Set(); // Track processed CTO events
+        this.processedBoosts = new Set(); // Track processed Boost events
+        this.processedAds = new Set(); // Track processed Ads events
+        this.eventTokenUpdateInterval = null; // Interval for updating event token data
+        this.eventTokenPreviousMarketcaps = new Map(); // Track previous marketcaps for color changes (mint -> marketcap)
         this.isHoveringToken = false; // Track if user is hovering over any token
         this.renderPending = false; // Track if a render is pending
         this.volumeResortInterval = null; // Interval for auto-resorting volume sorts
@@ -115,7 +126,8 @@ class ScoutApp {
         this.initEventListeners();
         this.startDexScreenerChecks();
         this.startDexPaymentChecks();
-        this.startLiveStreamsUpdates();
+        this.startTokenEventsUpdates(); // Start token events updates
+        this.startEventTokenUpdates(); // Start updating event tokens every 5 seconds
         this.startVolumeAutoResort(); // Start auto-resort if volume sort is selected
     }
 
@@ -138,14 +150,42 @@ class ScoutApp {
         this.themeButtons = document.querySelectorAll('.theme-btn');
         this.alertVolumeSlider = document.getElementById('alertVolume');
         this.alertVolumeValue = document.getElementById('alertVolumeValue');
-        this.liveStreamsTickerContainer = document.getElementById('liveStreamsTickerContainer');
-        this.liveStreamsTicker = document.getElementById('liveStreamsTicker');
+        this.tokenEventsTickerContainer = document.getElementById('tokenEventsTickerContainer');
+        this.tokenEventsTicker = document.getElementById('tokenEventsTicker');
+        this.tokenEventsTickerWrapper = this.tokenEventsTickerContainer ? this.tokenEventsTickerContainer.querySelector('.token-events-ticker-wrapper') : null;
+        this.topLiveStreamSlot = document.getElementById('topLiveStreamSlot');
+        this.topLiveStreamContent = document.getElementById('topLiveStreamContent');
         this.resortIndicator = document.getElementById('resortIndicator');
+        
+        // Initialize ticker with waiting message if no events yet
+        if (this.tokenEventsTicker && this.tokenEvents.length === 0) {
+            this.tokenEventsTicker.innerHTML = '<div class="token-events-waiting">Waiting for token events...</div>';
+        }
         this.helpBtn = document.getElementById('helpBtn');
         this.helpModal = document.getElementById('helpModal');
         this.closeHelpBtn = document.getElementById('closeHelpBtn');
         this.closeHelpBtn2 = document.getElementById('closeHelpBtn2');
         this.loginBtn = document.getElementById('loginBtn');
+        
+        // DM Alerts modal elements
+        this.dmAlertsModal = document.getElementById('dmAlertsModal');
+        this.closeDmAlertsBtn = document.getElementById('closeDmAlertsBtn');
+        this.usernameInput = document.getElementById('usernameInput');
+        this.passwordInput = document.getElementById('passwordInput');
+        this.checkUsernameBtn = document.getElementById('checkUsernameBtn');
+        this.createProfileOptionBtn = document.getElementById('createProfileOptionBtn');
+        this.loginOptionBtn = document.getElementById('loginOptionBtn');
+        this.createProfileBtn = document.getElementById('createProfileBtn');
+        this.backToUsernameBtn = document.getElementById('backToUsernameBtn');
+        this.backToOptionsBtn = document.getElementById('backToOptionsBtn');
+        this.backToOptionsFromLoginBtn = document.getElementById('backToOptionsFromLoginBtn');
+        this.loginSubmitBtn = document.getElementById('loginSubmitBtn');
+        this.loginUsername = document.getElementById('loginUsername');
+        this.loginPassword = document.getElementById('loginPassword');
+        this.linkTelegramBtn = document.getElementById('linkTelegramBtn');
+        this.logoutBtn = document.getElementById('logoutBtn');
+        
+        this.pendingUsername = null; // Store username during profile creation
     }
 
     initAlertSound() {
@@ -153,6 +193,50 @@ class ScoutApp {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         } catch (error) {
             console.warn('Web Audio API not supported:', error);
+        }
+    }
+
+    async playLowTone() {
+        // Check if audio is enabled (volume > 0)
+        if (this.settings.alertVolume === 0) {
+            return;
+        }
+
+        // Initialize audio context if not already initialized
+        if (!this.audioContext) {
+            try {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (error) {
+                console.warn('Web Audio API not supported:', error);
+                return;
+            }
+        }
+
+        try {
+            // Resume audio context if suspended (required by some browsers)
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+            }
+
+            // Create a low tone (200Hz) oscillator
+            const oscillator = this.audioContext.createOscillator();
+            const gainNode = this.audioContext.createGain();
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 200; // Low frequency tone
+            
+            // Set volume based on settings (0-1 range, but we use 0-100, so divide by 100)
+            const volume = this.settings.alertVolume / 100;
+            gainNode.gain.setValueAtTime(volume * 0.3, this.audioContext.currentTime); // 30% of volume setting
+            gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15); // Fade out quickly
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            
+            oscillator.start(this.audioContext.currentTime);
+            oscillator.stop(this.audioContext.currentTime + 0.15); // Short duration
+        } catch (error) {
+            console.warn('Error playing low tone:', error);
         }
     }
 
@@ -213,18 +297,27 @@ class ScoutApp {
     }
 
     initSocket() {
+        console.log('[Scout] 🔌 initSocket() called - Creating socket connection...');
         this.socket = io();
+        console.log('[Scout] 🔌 Socket.io client created, waiting for connection...');
 
         this.socket.on('connect', () => {
+            console.log('[Scout] ✅ Socket connected, socket.id:', this.socket.id);
+            console.log('[Scout] ✅ Socket is ready to receive events');
             this.statusText.textContent = 'Connected';
             this.statusEl.className = 'status-indicator connected';
             this.canvasAnimations.updateStatus(true);
         });
 
         this.socket.on('disconnect', () => {
+            console.log('[Scout] ❌ Socket disconnected');
             this.statusText.textContent = 'Disconnected';
             this.statusEl.className = 'status-indicator disconnected';
             this.canvasAnimations.updateStatus(false);
+        });
+        
+        this.socket.on('connect_error', (error) => {
+            console.error('[Scout] ❌ Socket connection error:', error);
         });
 
         // Get Solana price on connection
@@ -322,14 +415,129 @@ class ScoutApp {
                 // Add gold glow to the card
                 this.addGoldGlow(tokenData.mint);
             }
+            
+            // Migration event is now emitted from server-side, no need to handle here
+        });
+
+        // Listen for token events (CTO, Boost, Ads, OG, Migration, Dex Payment)
+        this.socket.on('token:event', (eventData) => {
+            console.log('[Scout] ✅ Received token:event:', eventData?.type || 'unknown type', 'for token:', eventData?.token?.mint?.substring(0, 8) || 'no mint');
+            
+            if (!eventData) {
+                console.error('[Scout] ❌ Event data is null or undefined');
+                return;
+            }
+            
+            if (!eventData.type) {
+                console.error('[Scout] ❌ Event data missing type field');
+                return;
+            }
+            
+            if (!eventData.token) {
+                console.error('[Scout] ❌ Event data missing token field');
+                return;
+            }
+            
+            this.handleTokenEvent(eventData);
+        });
+        
+        // Listen for top live stream updates
+        this.socket.on('top-live-stream:update', (streamData) => {
+            console.log('[Scout] 📺 Received top-live-stream:update:', streamData ? `${streamData.name || 'Unknown'} (${streamData.symbol || 'UNKNOWN'})` : 'null (no stream)');
+            this.updateTopLiveStream(streamData);
+        });
+        
+        // Also listen for all socket events for debugging
+        this.socket.onAny((eventName, ...args) => {
+            if (eventName === 'token:event') {
+                console.log('[Scout] 🔍 Socket event received:', eventName, 'with', args.length, 'arguments');
+            }
         });
     }
 
     initEventListeners() {
-        // Login button - redirect to alerts page for login
+        // Login button - redirect to alerts page for login/profile management
+        // When logged in, clicking username will show profile modal on alerts.html
+        // Login button - open DM Alerts modal
         if (this.loginBtn) {
             this.loginBtn.addEventListener('click', () => {
-                window.location.href = 'alerts.html';
+                this.openDmAlertsModal();
+            });
+        }
+        
+        // Close DM Alerts modal button
+        if (this.closeDmAlertsBtn) {
+            this.closeDmAlertsBtn.addEventListener('click', () => {
+                this.closeDmAlertsModal();
+            });
+        }
+        
+        // DM Alerts modal overlay click
+        if (this.dmAlertsModal) {
+            this.dmAlertsModal.addEventListener('click', (e) => {
+                if (e.target === this.dmAlertsModal) {
+                    this.closeDmAlertsModal();
+                }
+            });
+        }
+        
+        // DM Alerts slideshow handlers
+        if (this.createProfileOptionBtn) {
+            this.createProfileOptionBtn.addEventListener('click', () => this.showDmAlertsSlide(1));
+        }
+        if (this.loginOptionBtn) {
+            this.loginOptionBtn.addEventListener('click', () => {
+                this.showDmAlertsSlide(3);
+                const loginForm = document.getElementById('loginForm');
+                const profileActions = document.getElementById('profileActions');
+                if (loginForm) loginForm.style.display = 'block';
+                if (profileActions) profileActions.style.display = 'none';
+            });
+        }
+        if (this.checkUsernameBtn) {
+            this.checkUsernameBtn.addEventListener('click', () => this.checkUsername());
+        }
+        if (this.createProfileBtn) {
+            this.createProfileBtn.addEventListener('click', () => this.createProfile());
+        }
+        if (this.backToUsernameBtn) {
+            this.backToUsernameBtn.addEventListener('click', () => this.showDmAlertsSlide(1));
+        }
+        if (this.backToOptionsBtn) {
+            this.backToOptionsBtn.addEventListener('click', () => this.showDmAlertsSlide(0));
+        }
+        if (this.backToOptionsFromLoginBtn) {
+            this.backToOptionsFromLoginBtn.addEventListener('click', () => this.showDmAlertsSlide(0));
+        }
+        if (this.loginSubmitBtn) {
+            this.loginSubmitBtn.addEventListener('click', () => this.loginUser());
+        }
+        if (this.logoutBtn) {
+            this.logoutBtn.addEventListener('click', () => this.logoutUser());
+        }
+        if (this.linkTelegramBtn) {
+            this.linkTelegramBtn.addEventListener('click', () => this.linkTelegram());
+        }
+        
+        // Allow Enter key to submit forms
+        if (this.usernameInput) {
+            this.usernameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.checkUsername();
+            });
+        }
+        if (this.passwordInput) {
+            this.passwordInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.createProfile();
+            });
+        }
+        if (this.loginUsername) {
+            this.loginUsername.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.loginUser();
+            });
+        }
+        if (this.loginPassword) {
+            this.loginPassword.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.loginUser();
             });
         }
         
@@ -691,8 +899,12 @@ class ScoutApp {
         
         const completeClass = token.complete ? ' token-complete' : '';
         const hasDexProfile = token.hasDexProfile ? ' has-dex-profile' : '';
+        const hasBanner = token.banner_uri && token.banner_uri !== null && token.banner_uri.trim() !== '';
+        const bannerHtml = hasBanner ? `<div class="token-banner-hover"><img src="${this.escapeHtml(token.banner_uri)}" alt="${this.escapeHtml(token.name || 'Token')} banner" onerror="this.parentElement.style.display='none';"></div>` : '';
+        
         return `
-            <div class="dex-token-card${completeClass}${hasDexProfile}" data-mint="${token.mint}">
+            <div class="dex-token-card${completeClass}${hasDexProfile}${hasBanner ? ' has-banner' : ''}" data-mint="${token.mint}">
+                ${bannerHtml}
                 <div class="token-image-section-full">
                     <div class="token-image-wrapper-full">
                         <div class="token-image-placeholder-full" style="width: 100%; height: 100%; border-radius: 8px; background: linear-gradient(135deg, #60a5fa, #4ade80); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 0.75rem; position: relative; z-index: 1;">
@@ -1087,6 +1299,30 @@ class ScoutApp {
         if (card) {
             this.updateTokenCardValues(card, token);
             
+            // Update banner if it exists or was added
+            const hasBanner = token.banner_uri && token.banner_uri !== null && token.banner_uri.trim() !== '';
+            const existingBanner = card.querySelector('.token-banner-hover');
+            
+            if (hasBanner) {
+                if (!existingBanner) {
+                    // Add banner element
+                    const bannerHtml = `<div class="token-banner-hover"><img src="${this.escapeHtml(token.banner_uri)}" alt="${this.escapeHtml(token.name || 'Token')} banner" onerror="this.parentElement.style.display='none';"></div>`;
+                    card.insertAdjacentHTML('afterbegin', bannerHtml);
+                    card.classList.add('has-banner');
+                } else {
+                    // Update banner image if URI changed
+                    const bannerImg = existingBanner.querySelector('img');
+                    if (bannerImg && bannerImg.src !== token.banner_uri) {
+                        bannerImg.src = token.banner_uri;
+                        existingBanner.style.display = '';
+                    }
+                }
+            } else if (existingBanner) {
+                // Remove banner if it no longer exists
+                existingBanner.remove();
+                card.classList.remove('has-banner');
+            }
+            
             // Add pulse animation for buys and sells
             if (hasNewBuy) {
                 card.classList.add('pulse-buy');
@@ -1449,6 +1685,445 @@ class ScoutApp {
         return div.innerHTML;
     }
 
+    // DM Alerts Modal Methods
+    openDmAlertsModal() {
+        if (!this.dmAlertsModal) return;
+        this.dmAlertsModal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        
+        // Set URL hash based on login status
+        if (this.currentUser) {
+            window.location.hash = '#profile';
+        } else {
+            window.location.hash = '#login';
+        }
+        
+        // Reset to first slide (choose action) if not logged in
+        if (!this.currentUser) {
+            this.showDmAlertsSlide(0);
+            // Hide login form and profile actions
+            const loginForm = document.getElementById('loginForm');
+            const profileActions = document.getElementById('profileActions');
+            const profileCreatedMessage = document.getElementById('profileCreatedMessage');
+            if (loginForm) loginForm.style.display = 'none';
+            if (profileActions) profileActions.style.display = 'none';
+            if (profileCreatedMessage) profileCreatedMessage.style.display = 'none';
+        } else {
+            // Show profile actions if logged in (slide 3)
+            this.showDmAlertsSlide(3);
+            const loginForm = document.getElementById('loginForm');
+            const profileActions = document.getElementById('profileActions');
+            const profileCreatedMessage = document.getElementById('profileCreatedMessage');
+            if (loginForm) loginForm.style.display = 'none';
+            if (profileActions) profileActions.style.display = 'block';
+            if (profileCreatedMessage) profileCreatedMessage.style.display = 'none';
+            const loggedInUsername = document.getElementById('loggedInUsername');
+            if (loggedInUsername) loggedInUsername.textContent = this.currentUser.username;
+            // Check Telegram status
+            this.checkTelegramStatus();
+        }
+    }
+    
+    closeDmAlertsModal() {
+        if (!this.dmAlertsModal) return;
+        this.dmAlertsModal.classList.remove('active');
+        document.body.style.overflow = '';
+        // Clear URL hash
+        if (window.location.hash) {
+            window.history.replaceState(null, null, window.location.pathname);
+        }
+    }
+    
+    showDmAlertsSlide(slideIndex) {
+        const slides = document.querySelectorAll('.dm-alerts-slide');
+        slides.forEach((slide, index) => {
+            if (index === slideIndex) {
+                slide.classList.add('active');
+            } else {
+                slide.classList.remove('active');
+            }
+        });
+    }
+    
+    async checkUsername() {
+        const username = this.usernameInput?.value.trim();
+        const errorDiv = document.getElementById('usernameError');
+        
+        if (!username) {
+            if (errorDiv) {
+                errorDiv.textContent = 'Please enter a username';
+                errorDiv.style.display = 'block';
+            }
+            return;
+        }
+        
+        // Validate format
+        if (username.length > 16 || !/^[a-zA-Z0-9]+$/.test(username)) {
+            if (errorDiv) {
+                errorDiv.textContent = 'Username must be up to 16 characters and contain only letters and numbers';
+                errorDiv.style.display = 'block';
+            }
+            return;
+        }
+        
+        if (errorDiv) errorDiv.style.display = 'none';
+        
+        try {
+            const response = await fetch('/api/users/check-username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.available) {
+                // Store username for next slide
+                this.pendingUsername = username;
+                const confirmedUsername = document.getElementById('confirmedUsername');
+                if (confirmedUsername) confirmedUsername.textContent = username;
+                this.showDmAlertsSlide(2); // Go to password entry slide
+            } else {
+                if (errorDiv) {
+                    errorDiv.textContent = data.error || 'Username is not available';
+                    errorDiv.style.display = 'block';
+                }
+            }
+        } catch (error) {
+            console.error('Error checking username:', error);
+            if (errorDiv) {
+                errorDiv.textContent = 'Error checking username. Please try again.';
+                errorDiv.style.display = 'block';
+            }
+        }
+    }
+    
+    async createProfile() {
+        const username = this.pendingUsername;
+        const password = this.passwordInput?.value;
+        const errorDiv = document.getElementById('passwordError');
+        
+        if (!password || password.length < 4) {
+            if (errorDiv) {
+                errorDiv.textContent = 'Password must be at least 4 characters';
+                errorDiv.style.display = 'block';
+            }
+            return;
+        }
+        
+        if (errorDiv) errorDiv.style.display = 'none';
+        
+        try {
+            const response = await fetch('/api/users/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                // Store user session
+                this.currentUser = { username, password };
+                // Save session to localStorage
+                this.saveUserSessionToStorage();
+                
+                // Update URL hash to #profile
+                window.location.hash = '#profile';
+                
+                // Show success message and profile actions
+                const profileCreatedMessage = document.getElementById('profileCreatedMessage');
+                const loginForm = document.getElementById('loginForm');
+                const profileActions = document.getElementById('profileActions');
+                const loggedInUsername = document.getElementById('loggedInUsername');
+                
+                if (profileCreatedMessage) profileCreatedMessage.style.display = 'block';
+                if (loginForm) loginForm.style.display = 'none';
+                if (profileActions) profileActions.style.display = 'block';
+                if (loggedInUsername) loggedInUsername.textContent = username;
+                
+                this.showDmAlertsSlide(3); // Go to profile management slide
+                
+                // Update login button text
+                this.updateLoginButtonText();
+                
+                // Check Telegram status and update button
+                this.checkTelegramStatus();
+                
+                // Clear form
+                if (this.usernameInput) this.usernameInput.value = '';
+                if (this.passwordInput) this.passwordInput.value = '';
+                this.pendingUsername = null;
+                
+                this.showToast('Profile created successfully!', 'success');
+            } else {
+                if (errorDiv) {
+                    errorDiv.textContent = data.error || 'Failed to create profile';
+                    errorDiv.style.display = 'block';
+                }
+            }
+        } catch (error) {
+            console.error('Error creating profile:', error);
+            if (errorDiv) {
+                errorDiv.textContent = 'Error creating profile. Please try again.';
+                errorDiv.style.display = 'block';
+            }
+        }
+    }
+    
+    async loginUser() {
+        const username = this.loginUsername?.value.trim();
+        const password = this.loginPassword?.value;
+        const errorDiv = document.getElementById('loginError');
+        
+        if (!username || !password) {
+            if (errorDiv) {
+                errorDiv.textContent = 'Please enter username and password';
+                errorDiv.style.display = 'block';
+            }
+            return;
+        }
+        
+        if (errorDiv) errorDiv.style.display = 'none';
+        
+        try {
+            const response = await fetch('/api/users/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                // Store user session
+                this.currentUser = { username, password };
+                // Save session to localStorage
+                this.saveUserSessionToStorage();
+                
+                // Update URL hash to #profile
+                window.location.hash = '#profile';
+                
+                // Show profile actions on slide 3
+                this.showDmAlertsSlide(3);
+                const loginForm = document.getElementById('loginForm');
+                const profileActions = document.getElementById('profileActions');
+                const loggedInUsername = document.getElementById('loggedInUsername');
+                const profileCreatedMessage = document.getElementById('profileCreatedMessage');
+                
+                if (loginForm) loginForm.style.display = 'none';
+                if (profileActions) profileActions.style.display = 'block';
+                if (loggedInUsername) loggedInUsername.textContent = username;
+                if (profileCreatedMessage) profileCreatedMessage.style.display = 'none';
+                
+                // Update login button text
+                this.updateLoginButtonText();
+                
+                // Check Telegram status and update button
+                this.checkTelegramStatus();
+                
+                // Clear login form
+                if (this.loginUsername) this.loginUsername.value = '';
+                if (this.loginPassword) this.loginPassword.value = '';
+                
+                this.showToast('Logged in successfully!', 'success');
+            } else {
+                if (errorDiv) {
+                    errorDiv.textContent = data.error || 'Invalid username or password';
+                    errorDiv.style.display = 'block';
+                }
+            }
+        } catch (error) {
+            console.error('Error logging in:', error);
+            if (errorDiv) {
+                errorDiv.textContent = 'Error logging in. Please try again.';
+                errorDiv.style.display = 'block';
+            }
+        }
+    }
+    
+    linkTelegram() {
+        if (!this.currentUser) {
+            this.showToast('Please log in first', 'warning');
+            return;
+        }
+        
+        // Open Telegram with /start command and username parameter
+        const telegramUrl = `https://t.me/PFKit_bot?start=${encodeURIComponent(this.currentUser.username.toLowerCase())}`;
+        window.open(telegramUrl, '_blank');
+        
+        // Show info message
+        this.showToast('Opening Telegram... Click "Start" in the bot to link your account.', 'info');
+        
+        // Poll for Telegram link status every 2 seconds for up to 30 seconds
+        let pollCount = 0;
+        const maxPolls = 15; // 15 polls * 2 seconds = 30 seconds
+        
+        const pollInterval = setInterval(() => {
+            pollCount++;
+            this.checkTelegramStatus().then(linked => {
+                if (linked) {
+                    clearInterval(pollInterval);
+                } else if (pollCount >= maxPolls) {
+                    clearInterval(pollInterval);
+                    this.showToast('Link timeout. Please try again if you completed the linking process.', 'warning');
+                }
+            });
+        }, 2000);
+    }
+    
+    async checkTelegramStatus() {
+        if (!this.currentUser) return false;
+        
+        try {
+            const response = await fetch('/api/users/check-telegram', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: this.currentUser.username,
+                    password: this.currentUser.password
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                const wasLinked = this.linkTelegramBtn?.textContent.includes('Linked');
+                this.updateTelegramButtonState(data.telegramLinked);
+                
+                // Only show success toast if it just became linked
+                if (data.telegramLinked && !wasLinked) {
+                    this.showToast('Telegram successfully linked!', 'success');
+                }
+                
+                return data.telegramLinked;
+            }
+        } catch (error) {
+            console.error('Error checking Telegram status:', error);
+        }
+        
+        return false;
+    }
+
+    updateTelegramButtonState(linked) {
+        if (!this.linkTelegramBtn) return;
+        
+        if (linked) {
+            this.linkTelegramBtn.innerHTML = '<span>Telegram Linked ✓</span>';
+            this.linkTelegramBtn.disabled = true;
+            this.linkTelegramBtn.style.opacity = '1';
+            this.linkTelegramBtn.style.cursor = 'default';
+            this.linkTelegramBtn.classList.add('btn-success');
+        } else {
+            this.linkTelegramBtn.innerHTML = '<span>Link to Telegram</span>';
+            this.linkTelegramBtn.disabled = false;
+            this.linkTelegramBtn.style.opacity = '1';
+            this.linkTelegramBtn.style.cursor = 'pointer';
+            this.linkTelegramBtn.classList.remove('btn-success');
+        }
+    }
+    
+    logoutUser() {
+        this.currentUser = null;
+        // Clear session from localStorage
+        this.clearUserSessionFromStorage();
+        
+        // Update login button text
+        this.updateLoginButtonText();
+        
+        // Reset to slide 0 (choose action)
+        this.showDmAlertsSlide(0);
+        const loginForm = document.getElementById('loginForm');
+        const profileActions = document.getElementById('profileActions');
+        const profileCreatedMessage = document.getElementById('profileCreatedMessage');
+        
+        if (loginForm) loginForm.style.display = 'none';
+        if (profileActions) profileActions.style.display = 'none';
+        if (profileCreatedMessage) profileCreatedMessage.style.display = 'none';
+        
+        // Reset Telegram button
+        if (this.linkTelegramBtn) {
+            this.linkTelegramBtn.innerHTML = '<span>Link to Telegram</span>';
+            this.linkTelegramBtn.disabled = true;
+            this.linkTelegramBtn.style.opacity = '0.6';
+            this.linkTelegramBtn.style.cursor = 'not-allowed';
+            this.linkTelegramBtn.classList.remove('btn-success');
+        }
+        
+        // Clear login form
+        if (this.loginUsername) this.loginUsername.value = '';
+        if (this.loginPassword) this.loginPassword.value = '';
+        
+        this.showToast('Logged out successfully', 'success');
+    }
+    
+    showToast(message, type = 'success') {
+        // Remove existing toast if any
+        const existingToast = document.querySelector('.toast-notification');
+        if (existingToast) {
+            existingToast.remove();
+        }
+        
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `toast-notification toast-${type}`;
+        
+        // Add icon based on type
+        let icon = '✓';
+        if (type === 'error') {
+            icon = '✗';
+        } else if (type === 'warning') {
+            icon = '⚠';
+        } else if (type === 'info') {
+            icon = 'ℹ';
+        }
+        
+        toast.innerHTML = `
+            <div class="toast-content">
+                <span class="toast-icon">${icon}</span>
+                <span class="toast-message">${this.escapeHtml(message)}</span>
+            </div>
+        `;
+        
+        document.body.appendChild(toast);
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            toast.classList.add('show');
+        });
+        
+        // Auto remove after 3 seconds
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.remove();
+                }
+            }, 300);
+        }, 3000);
+    }
+
+    saveUserSessionToStorage() {
+        try {
+            if (this.currentUser) {
+                localStorage.setItem('userSession', JSON.stringify({
+                    username: this.currentUser.username,
+                    password: this.currentUser.password
+                }));
+            }
+        } catch (error) {
+            console.error('Error saving user session to localStorage:', error);
+        }
+    }
+
+    clearUserSessionFromStorage() {
+        try {
+            localStorage.removeItem('userSession');
+        } catch (error) {
+            console.error('Error clearing user session from localStorage:', error);
+        }
+    }
+
     openSettingsModal() {
         this.updateSettingsButtons();
         this.updateAlertVolumeSlider();
@@ -1669,14 +2344,18 @@ class ScoutApp {
         // Calculate interval based on number of tokens (1.05s per token, minimum 1.05s)
         const interval = Math.max(1050, tokensWithProfiles.length * 1050);
 
-        // Check immediately, then at calculated interval
-        this.checkDexPaymentStatuses(tokensWithProfiles);
+        // Check immediately for startup
+        // Only emit event badge for the first token (index 0) that has a payment status
+        // All others will just get green checkmarks but no event badges
+        this.checkDexPaymentStatuses(tokensWithProfiles, true);
+        
+        // Start polling for status changes (these will emit event badges for new statuses)
         this.dexPaymentCheckInterval = setInterval(() => {
             const currentTokensWithProfiles = Array.from(this.tokens.entries())
                 .filter(([mint, token]) => token.hasDexProfile)
                 .map(([mint]) => mint);
             if (currentTokensWithProfiles.length > 0) {
-                this.checkDexPaymentStatuses(currentTokensWithProfiles);
+                this.checkDexPaymentStatuses(currentTokensWithProfiles, false);
             } else {
                 // No more tokens with profiles, stop checking
                 this.stopDexPaymentChecks();
@@ -1691,7 +2370,9 @@ class ScoutApp {
         }
     }
 
-    async checkDexPaymentStatuses(mints) {
+    async checkDexPaymentStatuses(mints, isStartup = false) {
+        let firstPaymentFound = false; // Track if we've found the first payment status at startup
+        
         for (const mint of mints) {
             try {
                 const response = await fetch(`https://api.dexscreener.com/orders/v1/solana/${mint}`);
@@ -1703,7 +2384,20 @@ class ScoutApp {
                 if (Array.isArray(data) && data.length > 0) {
                     const status = data[0].status;
                     if (status) {
-                        this.handleDexPaymentStatus(mint, status);
+                        // At startup, only emit event badge for the first token with a payment status (index 0)
+                        if (isStartup) {
+                            if (!firstPaymentFound) {
+                                // First payment found - emit event badge
+                                await this.handleDexPaymentStatus(mint, status, false); // Pass false to emit event badge
+                                firstPaymentFound = true;
+                            } else {
+                                // Subsequent payments at startup - just update green checkmarks, no event badge
+                                await this.handleDexPaymentStatus(mint, status, true); // Pass true to skip event badge
+                            }
+                        } else {
+                            // After startup - emit event badges for all new status changes
+                            await this.handleDexPaymentStatus(mint, status, false);
+                        }
                     }
                 }
             } catch (error) {
@@ -1712,7 +2406,7 @@ class ScoutApp {
         }
     }
 
-    handleDexPaymentStatus(mint, status) {
+    async handleDexPaymentStatus(mint, status, isStartup = false) {
         // Get or create status set for this mint
         if (!this.dexPaymentStatuses.has(mint)) {
             this.dexPaymentStatuses.set(mint, new Set());
@@ -1720,25 +2414,40 @@ class ScoutApp {
         const statusSet = this.dexPaymentStatuses.get(mint);
         const hadStatus = statusSet.has(status);
 
-        // Handle processing/approved status - play positive sound once per status
-        if (status === 'processing' || status === 'approved') {
-            if (!hadStatus) {
-                statusSet.add(status);
+        // Always update the visual status (green checkmarks)
+        this.updateTokenCardDexPaymentStatus(mint, status);
+
+        // At startup, mark status as seen but don't emit event badges
+        if (isStartup) {
+            statusSet.add(status);
+            return;
+        }
+
+        // After startup, only emit event badges and play sounds if this is a new status change
+        if (!hadStatus) {
+            // Mark status as seen
+            statusSet.add(status);
+            
+            // Handle processing/approved status - play positive sound and emit event badge
+            if (status === 'processing' || status === 'approved') {
                 this.playDexAlertSound(false); // Positive dex alert sound
-                this.updateTokenCardDexPaymentStatus(mint, status);
+                
+                // Emit dex payment event for token events ticker
+                const token = this.tokens.get(mint);
+                if (token) {
+                    await this.emitDexPaymentEvent(token, status);
+                }
             }
-        }
-        // Handle cancelled status - play negative sound once
-        else if (status === 'cancelled') {
-            if (!hadStatus) {
-                statusSet.add(status);
+            // Handle cancelled status - play negative sound and emit event badge
+            else if (status === 'cancelled') {
                 this.playDexAlertSound(true); // Negative dex alert sound
-                this.updateTokenCardDexPaymentStatus(mint, status);
+                
+                // Emit dex payment event for token events ticker
+                const token = this.tokens.get(mint);
+                if (token) {
+                    await this.emitDexPaymentEvent(token, status);
+                }
             }
-        }
-        // Update visual status even if we've already alerted
-        else {
-            this.updateTokenCardDexPaymentStatus(mint, status);
         }
     }
 
@@ -1757,6 +2466,66 @@ class ScoutApp {
         } else if (status === 'cancelled') {
             card.classList.add('dex-status-cancelled');
         }
+    }
+
+    /**
+     * Fetch header image from DexScreener search API
+     * @param {string} mintAddress - The token mint address
+     * @returns {Promise<string|null>} Header image URL or null if not found
+     */
+    async getDexScreenerHeader(mintAddress) {
+        try {
+            const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${mintAddress}`);
+            if (!response.ok) {
+                return null;
+            }
+            
+            const data = await response.json();
+            if (!data || !data.pairs || !Array.isArray(data.pairs) || data.pairs.length === 0) {
+                return null;
+            }
+            
+            // Get the first pair (usually the most relevant one)
+            const firstPair = data.pairs[0];
+            if (firstPair && firstPair.info && firstPair.info.header) {
+                return firstPair.info.header;
+            }
+            
+            return null;
+        } catch (error) {
+            // Silently handle errors
+            return null;
+        }
+    }
+
+    /**
+     * Emit dex payment event with header image fetched from DexScreener if needed
+     * @param {Object} token - The token object
+     * @param {string} status - The payment status
+     */
+    async emitDexPaymentEvent(token, status) {
+        const marketCapSol = token.marketCapSol || token.value || 0;
+        const marketCapUSD = (marketCapSol && this.solanaPriceUSD ? marketCapSol * this.solanaPriceUSD : 0);
+        // Get ATH from token if available
+        const athMarketCap = token.athMarketCap || 0;
+        
+        // Fetch header from DexScreener search API (dex payment API doesn't include header)
+        const header = await this.getDexScreenerHeader(token.mint);
+        
+        this.handleTokenEvent({
+            type: 'dex-payment',
+            token: {
+                mint: token.mint,
+                name: token.name || 'Unknown',
+                symbol: token.symbol || 'UNKNOWN',
+                image: token.image || null,
+                header: header,
+                status: status,
+                marketCapSol: marketCapSol,
+                marketCapUSD: marketCapUSD,
+                athMarketCap: athMarketCap
+            }
+        });
     }
 
     async playDexAlertSound(isNegative = false) {
@@ -1810,239 +2579,114 @@ class ScoutApp {
         }
     }
 
-    startLiveStreamsUpdates() {
-        // Clear existing interval if any
-        if (this.liveStreamsInterval) {
-            clearInterval(this.liveStreamsInterval);
-        }
+    startTokenEventsUpdates() {
+        // Token events are received via socket.io, no polling needed
+        // This function is a placeholder for future updates if needed
+    }
 
-        // Check immediately, then every 5 seconds
-        this.updateLiveStreamsTicker();
-        this.liveStreamsInterval = setInterval(() => {
-            this.updateLiveStreamsTicker();
+    startEventTokenUpdates() {
+        // Update latest 8 event tokens every 5 seconds
+        this.updateEventTokens();
+        this.eventTokenUpdateInterval = setInterval(() => {
+            this.updateEventTokens();
         }, 5000);
     }
 
-    stopLiveStreamsUpdates() {
-        if (this.liveStreamsInterval) {
-            clearInterval(this.liveStreamsInterval);
-            this.liveStreamsInterval = null;
+    async updateEventTokens() {
+        if (!this.tokenEvents || this.tokenEvents.length === 0) {
+            return;
         }
-    }
 
-    async updateLiveStreamsTicker() {
-        try {
-            const response = await fetch('/api/live-streams');
-            if (!response.ok) {
-                console.error('Live streams API error:', response.status, response.statusText);
+        // Get latest 8 events
+        const latestEvents = this.tokenEvents.slice(0, 8);
+        const updatePromises = latestEvents.map(async (event) => {
+            if (!event.token || !event.token.mint) {
                 return;
             }
 
-            let data;
             try {
-                data = await response.json();
-            } catch (parseError) {
-                console.error('Failed to parse live streams JSON:', parseError);
-                return;
+                const response = await fetch(`/api/token/${event.token.mint}`);
+                if (!response.ok) {
+                    return;
+                }
+
+                const data = await response.json();
+                if (!data) {
+                    return;
+                }
+
+                // Store previous marketcap for comparison
+                const previousMarketcap = this.eventTokenPreviousMarketcaps.get(event.token.mint) || event.token.marketCapUSD || 0;
+                this.eventTokenPreviousMarketcaps.set(event.token.mint, data.marketCapUSD || 0);
+
+                // Update event token data
+                event.token.marketCapUSD = data.marketCapUSD || 0;
+                event.token.marketCapSol = data.marketCapSol || 0;
+                event.token.athMarketCap = data.athMarketCap || 0;
+                event.token.previousMarketcap = previousMarketcap;
+
+                // Update the DOM element
+                const itemElement = this.tokenEventsTicker?.querySelector(`[data-event-id="${event.id}"]`);
+                if (itemElement) {
+                    this.updateEventItemElement(itemElement, event);
+                }
+            } catch (error) {
+                console.error(`Error updating token ${event.token.mint}:`, error);
             }
-
-            // Check if data is empty
-            if (!data) {
-                console.log('Live streams API returned empty response');
-                this.currentLiveStreams = [];
-                this.renderLiveStreamsTicker();
-                return;
-            }
-
-            console.log('Live streams response:', data);
-            console.log('Response type:', typeof data);
-            console.log('Is array:', Array.isArray(data));
-            if (data && typeof data === 'object') {
-                console.log('Response keys:', Object.keys(data));
-            }
-
-            // Get top 8 by num_participants
-            let liveStreams = [];
-            if (Array.isArray(data)) {
-                console.log('Processing as array, length:', data.length);
-                liveStreams = data
-                    .filter(token => {
-                        const isLive = token.is_currently_live === true;
-                        const hasParticipants = token.num_participants !== undefined && token.num_participants !== null;
-                        return isLive && hasParticipants;
-                    })
-                    .sort((a, b) => (b.num_participants || 0) - (a.num_participants || 0))
-                    .slice(0, 8);
-                console.log('Filtered live streams:', liveStreams.length);
-            } else if (data && data.data && Array.isArray(data.data)) {
-                console.log('Processing as data.data array, length:', data.data.length);
-                liveStreams = data.data
-                    .filter(token => {
-                        const isLive = token.is_currently_live === true;
-                        const hasParticipants = token.num_participants !== undefined && token.num_participants !== null;
-                        return isLive && hasParticipants;
-                    })
-                    .sort((a, b) => (b.num_participants || 0) - (a.num_participants || 0))
-                    .slice(0, 8);
-                console.log('Filtered live streams:', liveStreams.length);
-            } else {
-                console.warn('Unexpected response structure:', data);
-            }
-
-            console.log('Final live streams count:', liveStreams.length);
-            this.currentLiveStreams = liveStreams;
-            this.renderLiveStreamsTicker();
-        } catch (error) {
-            console.error('Error fetching live streams:', error);
-        }
-    }
-
-    renderLiveStreamsTicker() {
-        if (!this.liveStreamsTicker || !this.liveStreamsTickerContainer) {
-            console.warn('Live streams ticker elements not found');
-            return;
-        }
-
-        if (!this.currentLiveStreams || this.currentLiveStreams.length === 0) {
-            console.log('No live streams to display, hiding ticker');
-            this.liveStreamsTickerContainer.style.display = 'none';
-            return;
-        }
-
-        console.log(`Rendering ${this.currentLiveStreams.length} live streams`);
-        // Show the container
-        this.liveStreamsTickerContainer.style.display = 'flex';
-
-        // Create ticker items - duplicate for seamless loop
-        const tickerItems = this.currentLiveStreams.map(token => {
-            const imageUrl = token.image_uri || (token.mint ? `https://images.pump.fun/coin-image/${token.mint}?variant=86x86` : null);
-            const symbolText = (token.symbol || '?').substring(0, 4).toUpperCase();
-            const name = token.name || 'Unknown';
-            const participants = token.num_participants || 0;
-            const marketCap = token.usd_market_cap || token.market_cap || 0;
-            const athMarketCap = token.ath_market_cap || 0;
-            const livestreamTitle = token.livestream_title || '';
-            const thumbnail = token.thumbnail || '';
-            
-            // Format marketcap
-            const marketCapFormatted = this.formatUSD(marketCap);
-            const athFormatted = this.formatUSD(athMarketCap);
-            
-            return `
-                <div class="live-streams-ticker-item" data-mint="${token.mint || ''}" data-name="${this.escapeHtml(name)}" data-title="${this.escapeHtml(livestreamTitle)}" data-thumbnail="${this.escapeHtml(thumbnail)}" style="cursor: pointer;">
-                    ${imageUrl ? `<img src="${imageUrl}" alt="${name}" class="live-streams-icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` : ''}
-                    <div class="live-streams-icon-placeholder" style="${imageUrl ? 'display: none;' : ''}">
-                        ${symbolText}
-                    </div>
-                    <span class="live-streams-name">${this.escapeHtml(name)}</span>
-                    <div class="live-streams-mc-group">
-                        <span class="live-streams-mc">MC: ${marketCapFormatted}</span>
-                        <span class="live-streams-ath">ATH: ${athFormatted}</span>
-                    </div>
-                    <span class="live-streams-participants">👥 ${participants}</span>
-                </div>
-            `;
-        }).join('');
-
-        // Duplicate for seamless scrolling
-        this.liveStreamsTicker.innerHTML = tickerItems + tickerItems;
-        
-        // Attach click handlers to live stream items
-        this.attachLiveStreamClickHandlers();
-    }
-
-    attachLiveStreamClickHandlers() {
-        if (!this.liveStreamsTicker) return;
-        
-        this.liveStreamsTicker.querySelectorAll('.live-streams-ticker-item').forEach(item => {
-            // Remove existing listeners by cloning
-            const newItem = item.cloneNode(true);
-            item.parentNode.replaceChild(newItem, item);
-            
-            // Add click handler
-            const mint = newItem.getAttribute('data-mint');
-            if (mint) {
-                newItem.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    window.open(`https://pump.fun/${mint}`, '_blank');
-                });
-            }
-            
-            // Add hover handlers for tooltip
-            const name = newItem.getAttribute('data-name');
-            const title = newItem.getAttribute('data-title');
-            const thumbnail = newItem.getAttribute('data-thumbnail');
-            
-            newItem.addEventListener('mouseenter', (e) => {
-                this.showLiveStreamTooltip(e, name, title, thumbnail);
-            });
-            
-            newItem.addEventListener('mouseleave', () => {
-                this.hideLiveStreamTooltip();
-            });
         });
+
+        await Promise.all(updatePromises);
     }
 
-    showLiveStreamTooltip(event, name, title, thumbnail) {
-        // Remove existing tooltip if any
-        const existing = document.getElementById('liveStreamTooltip');
-        if (existing) {
-            existing.remove();
+    updateEventItemElement(itemElement, event) {
+        const token = event.token;
+        const marketCapUSD = token.marketCapUSD || 0;
+        const marketCapFormatted = marketCapUSD > 0 ? this.formatUSD(marketCapUSD) : 'N/A';
+        const athMarketCap = token.athMarketCap || 0;
+
+        // Update marketcap with color based on change
+        const marketcapElement = itemElement.querySelector('.token-events-marketcap');
+        if (marketcapElement) {
+            marketcapElement.textContent = marketCapFormatted;
+            
+            // Remove previous color classes
+            marketcapElement.classList.remove('marketcap-up', 'marketcap-down');
+            
+            // Add color based on change
+            if (token.previousMarketcap && token.previousMarketcap > 0) {
+                if (marketCapUSD > token.previousMarketcap) {
+                    marketcapElement.classList.add('marketcap-up');
+                } else if (marketCapUSD < token.previousMarketcap) {
+                    marketcapElement.classList.add('marketcap-down');
+                }
+            }
         }
 
-        // Create tooltip element
-        const tooltip = document.createElement('div');
-        tooltip.id = 'liveStreamTooltip';
-        tooltip.className = 'live-stream-tooltip';
-        
-        let content = '';
-        
-        // Add thumbnail if available
-        if (thumbnail && thumbnail.trim()) {
-            content += `<img src="${this.escapeHtml(thumbnail)}" alt="${this.escapeHtml(name)}" class="live-stream-tooltip-thumbnail" onerror="this.style.display='none';">`;
+        // Update ATH
+        const athElement = itemElement.querySelector('.token-events-ath');
+        if (athMarketCap > 0) {
+            const athFormatted = this.formatUSD(athMarketCap);
+            if (athElement) {
+                athElement.textContent = `ATH: ${athFormatted}`;
+            } else {
+                // Add ATH element if it doesn't exist
+                const contentElement = itemElement.querySelector('.token-events-content');
+                if (contentElement) {
+                    const athSpan = document.createElement('span');
+                    athSpan.className = 'token-events-ath';
+                    athSpan.textContent = `ATH: ${athFormatted}`;
+                    contentElement.appendChild(athSpan);
+                }
+            }
+        } else if (athElement) {
+            // Remove ATH element if marketcap is 0
+            athElement.remove();
         }
-        
-        content += `<div class="live-stream-tooltip-content">`;
-        content += `<div class="live-stream-tooltip-name">${this.escapeHtml(name)}</div>`;
-        if (title && title.trim()) {
-            content += `<div class="live-stream-tooltip-title">${this.escapeHtml(title)}</div>`;
-        }
-        content += `</div>`;
-        
-        tooltip.innerHTML = content;
-        
-        document.body.appendChild(tooltip);
-        
-        // Position tooltip near the mouse
-        const rect = event.currentTarget.getBoundingClientRect();
-        const tooltipRect = tooltip.getBoundingClientRect();
-        
-        // Position above the item, centered
-        tooltip.style.left = `${rect.left + (rect.width / 2) - (tooltipRect.width / 2)}px`;
-        tooltip.style.top = `${rect.top - tooltipRect.height - 10}px`;
-        
-        // Ensure tooltip stays within viewport
-        const maxLeft = window.innerWidth - tooltipRect.width - 10;
-        const minLeft = 10;
-        if (parseInt(tooltip.style.left) > maxLeft) {
-            tooltip.style.left = `${maxLeft}px`;
-        }
-        if (parseInt(tooltip.style.left) < minLeft) {
-            tooltip.style.left = `${minLeft}px`;
-        }
-        
-        // If tooltip would go above viewport, show below instead
-        if (parseInt(tooltip.style.top) < 10) {
-            tooltip.style.top = `${rect.bottom + 10}px`;
-        }
+
+        // Update data attribute
+        itemElement.setAttribute('data-marketcap', marketCapUSD);
     }
 
-    hideLiveStreamTooltip() {
-        const tooltip = document.getElementById('liveStreamTooltip');
-        if (tooltip) {
-            tooltip.remove();
-        }
-    }
 
     showSocialTooltip(event, url) {
         // Remove existing tooltip if any
@@ -2102,21 +2746,668 @@ class ScoutApp {
         }
     }
 
+    async handleTokenEvent(eventData) {
+        if (!eventData || !eventData.type || !eventData.token) {
+            console.warn('[Scout] Invalid token event data:', eventData);
+            return;
+        }
+
+        console.log('[Scout] Handling token event:', eventData.type, 'for token:', eventData.token.mint?.substring(0, 8) || 'no mint');
+
+        const event = {
+            id: `${eventData.type}-${eventData.token.mint}-${Date.now()}`,
+            type: eventData.type,
+            token: eventData.token,
+            timestamp: Date.now()
+        };
+
+        // Play low tone sound for new event
+        await this.playLowTone();
+        
+        console.log('[Scout] Event created:', event.id, 'Type:', event.type);
+
+        // Limit to 20 events maximum (remove oldest if exceeded)
+        const maxEvents = 20;
+        if (this.tokenEvents.length >= maxEvents) {
+            // Remove the last (oldest) event from array and animate it out from DOM
+            const oldestEvent = this.tokenEvents.pop();
+            if (oldestEvent && this.tokenEventsTicker) {
+                const oldItem = this.tokenEventsTicker.querySelector(`[data-event-id="${oldestEvent.id}"]`);
+                if (oldItem) {
+                    // Animate out the old item
+                    oldItem.classList.add('slide-out');
+                    setTimeout(() => {
+                        if (oldItem.parentNode) {
+                            oldItem.remove();
+                        }
+                    }, 300); // Match animation duration
+                }
+            }
+        }
+        
+        // Add event to the beginning of the list
+        this.tokenEvents.unshift(event);
+        
+        console.log('[Scout] Event added to tokenEvents array. Total events:', this.tokenEvents.length);
+
+        // Render the ticker with slide-in animation for new event
+        this.renderTokenEventsTicker(true);
+        
+        console.log('[Scout] Ticker rendered for event:', event.type);
+    }
+
+    renderTokenEventsTicker(isNewEvent = false) {
+        console.log('[Scout] renderTokenEventsTicker called, isNewEvent:', isNewEvent, 'tokenEvents.length:', this.tokenEvents?.length || 0);
+        
+        if (!this.tokenEventsTicker || !this.tokenEventsTickerContainer) {
+            console.warn('[Scout] ❌ Ticker elements not found:', {
+                hasTicker: !!this.tokenEventsTicker,
+                hasContainer: !!this.tokenEventsTickerContainer
+            });
+            return;
+        }
+
+        // Always show the container (it should be visible by default now)
+        if (this.tokenEventsTickerContainer) {
+            this.tokenEventsTickerContainer.style.display = 'flex';
+        }
+
+        if (!this.tokenEvents || this.tokenEvents.length === 0) {
+            // Show "Waiting for token events..." message when no events
+            if (this.tokenEventsTicker) {
+                this.tokenEventsTicker.innerHTML = '<div class="token-events-waiting">Waiting for token events...</div>';
+            }
+            return;
+        }
+
+        // If it's a new event, only add the new one (first in array)
+        if (isNewEvent && this.tokenEvents.length > 0) {
+            const newEvent = this.tokenEvents[0];
+            const newItem = this.createEventItem(newEvent);
+            
+            // Insert at the beginning
+            this.tokenEventsTicker.insertAdjacentHTML('afterbegin', newItem);
+            
+            // Attach click handler to the new item
+            const newItemElement = this.tokenEventsTicker.querySelector(`[data-event-id="${newEvent.id}"]`);
+            if (newItemElement) {
+                this.attachEventItemHandlers(newItemElement, newEvent);
+            }
+            
+            return;
+        }
+
+        // Full re-render (for initial load)
+        // Create ticker items
+        const tickerItems = this.tokenEvents.map(event => {
+            return this.createEventItemHTML(event);
+        }).join('');
+
+        // Replace all content
+        this.tokenEventsTicker.innerHTML = tickerItems;
+
+        // Attach handlers to all items
+        this.tokenEvents.forEach(event => {
+            const itemElement = this.tokenEventsTicker.querySelector(`[data-event-id="${event.id}"]`);
+            if (itemElement) {
+                this.attachEventItemHandlers(itemElement, event);
+            }
+        });
+    }
+    
+    attachTokenEventClickHandlers() {
+        // This function is kept for backwards compatibility but now uses attachEventItemHandlers
+        // Attach handlers to all items in the ticker
+        this.tokenEvents.forEach(event => {
+            const itemElement = this.tokenEventsTicker?.querySelector(`[data-event-id="${event.id}"]`);
+            if (itemElement) {
+                this.attachEventItemHandlers(itemElement, event);
+            }
+        });
+    }
+    
+    createEventItem(event) {
+        return this.createEventItemHTML(event);
+    }
+    
+    createEventItemHTML(event) {
+        const token = event.token;
+        const imageUrl = token.image || (token.mint ? `https://images.pump.fun/coin-image/${token.mint}?variant=86x86` : null);
+        const symbolText = (token.symbol || '?').substring(0, 6).toUpperCase();
+        const name = token.name || 'Unknown';
+        const mint = token.mint || '';
+
+        // Get marketcap (prefer USD, fallback to calculating from SOL, or get from tokens Map if available)
+        let marketCapUSD = token.marketCapUSD || (token.marketCapSol && this.solanaPriceUSD ? token.marketCapSol * this.solanaPriceUSD : 0);
+        if (!marketCapUSD && token.mint && this.tokens.has(token.mint)) {
+            // Fallback: get marketcap from tokens Map if available
+            const storedToken = this.tokens.get(token.mint);
+            if (storedToken) {
+                const marketCapSol = storedToken.marketCapSol || storedToken.value || 0;
+                marketCapUSD = marketCapSol && this.solanaPriceUSD ? marketCapSol * this.solanaPriceUSD : 0;
+            }
+        }
+        const marketCapFormatted = marketCapUSD > 0 ? this.formatUSD(marketCapUSD) : 'N/A';
+        
+        // Get ATH
+        const athMarketCap = token.athMarketCap || 0;
+        const athFormatted = athMarketCap > 0 ? this.formatUSD(athMarketCap) : '';
+
+        let eventEmoji = '';
+        let eventContext = '';
+
+        switch (event.type) {
+            case 'cto':
+                eventEmoji = '🫂';
+                eventContext = 'CTO';
+                break;
+            case 'boost':
+                eventEmoji = '⚡';
+                const boostAmount = token.amount || 0;
+                const boostTotal = token.totalAmount || 0;
+                eventContext = `${boostAmount} / ${boostTotal}`;
+                break;
+            case 'ads':
+                eventEmoji = '📣';
+                const impressions = token.impressions || 0;
+                // Format as "10K Views" instead of "10,000 impressions"
+                if (impressions >= 1000000) {
+                    eventContext = `${(impressions / 1000000).toFixed(1)}M Views`;
+                } else if (impressions >= 1000) {
+                    eventContext = `${(impressions / 1000).toFixed(impressions >= 10000 ? 0 : 1)}K Views`;
+                } else {
+                    eventContext = `${impressions} Views`;
+                }
+                break;
+            case 'og':
+                eventEmoji = '🌿';
+                eventContext = 'OG Tweet';
+                break;
+            case 'migration':
+                eventEmoji = '🚀';
+                eventContext = 'Migration';
+                break;
+            case 'dex-payment':
+                eventEmoji = '✅';
+                eventContext = 'Dex Paid';
+                break;
+            default:
+                eventEmoji = '🔔';
+                eventContext = event.type;
+        }
+
+        // Store initial marketcap for comparison
+        if (!this.eventTokenPreviousMarketcaps.has(mint)) {
+            this.eventTokenPreviousMarketcaps.set(mint, marketCapUSD);
+        }
+
+        // Store header in data attribute for easy retrieval
+        const headerUrl = (event.type === 'cto' || event.type === 'boost' || event.type === 'ads') && token.header ? token.header : '';
+        
+        return `
+            <div class="token-events-ticker-item" 
+                 data-event-id="${event.id}" 
+                 data-mint="${mint}" 
+                 data-name="${this.escapeHtml(name)}" 
+                 data-symbol="${this.escapeHtml(symbolText)}" 
+                 data-event-type="${event.type}"
+                 data-marketcap="${marketCapUSD}"
+                 data-image="${imageUrl || ''}"
+                 data-header="${this.escapeHtml(headerUrl)}"
+                 data-description="${this.escapeHtml((event.type === 'cto' || event.type === 'boost' || event.type === 'ads') ? (token.description || '') : '')}"
+                 style="cursor: pointer;">
+                <div class="token-events-event-header">
+                    <span class="event-emoji">${eventEmoji}</span>
+                    <span class="event-context">${eventContext}</span>
+                </div>
+                ${imageUrl ? `<img src="${imageUrl}" alt="${this.escapeHtml(name)}" class="token-events-icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` : ''}
+                <div class="token-events-icon-placeholder" style="${imageUrl ? 'display: none;' : ''}">
+                    ${symbolText.substring(0, 2)}
+                </div>
+                <div class="token-events-content">
+                    <span class="token-events-symbol">${this.escapeHtml(symbolText)}</span>
+                    <span class="token-events-marketcap">${marketCapFormatted}</span>
+                    ${athFormatted ? `<span class="token-events-ath">ATH: ${athFormatted}</span>` : ''}
+                </div>
+            </div>
+        `;
+    }
+    
+    attachEventItemHandlers(itemElement, event) {
+        // Check if handlers already attached (prevent duplicates)
+        if (itemElement.dataset.handlersAttached === 'true') {
+            return;
+        }
+        itemElement.dataset.handlersAttached = 'true';
+        
+        // Add click handler
+        const mint = itemElement.getAttribute('data-mint');
+        if (mint) {
+            itemElement.addEventListener('click', (e) => {
+                e.stopPropagation();
+                window.open(`https://pump.fun/${mint}`, '_blank');
+            });
+        }
+
+        // Add hover handler for all events (show tooltip with details)
+        // Always retrieve the event from tokenEvents array to ensure we have the complete data including header
+        itemElement.addEventListener('mouseenter', (e) => {
+            const eventId = itemElement.getAttribute('data-event-id');
+            // Find the event from tokenEvents array (has complete data including header)
+            const eventData = this.tokenEvents.find(ev => ev.id === eventId) || event;
+            
+            this.showTokenEventTooltip(e, eventData);
+        });
+
+        itemElement.addEventListener('mouseleave', () => {
+            this.hideTokenEventTooltip();
+        });
+    }
+    
+    extractTwitterHandle(twitterUrl) {
+        if (!twitterUrl) {
+            return null;
+        }
+        // Extract handle from URLs like https://x.com/elonmusk/status/... or https://twitter.com/elonmusk/status/...
+        const match = twitterUrl.match(/(?:x\.com|twitter\.com)\/([^\/]+)/i);
+        return match ? match[1] : null;
+    }
+
+    showTokenEventTooltip(event, eventData) {
+        // Remove existing tooltip if any
+        const existing = document.getElementById('tokenEventTooltip');
+        if (existing) {
+            existing.remove();
+        }
+
+        const token = eventData.token;
+        const name = token.name || 'Unknown';
+        const symbol = token.symbol || 'UNKNOWN';
+        
+        // For CTO, Boost, and Ads events, use DexScreener header image if available, otherwise fallback to token image
+        let displayImageUrl = null;
+        let isHeaderImage = false;
+        if (eventData.type === 'cto' || eventData.type === 'boost' || eventData.type === 'ads') {
+            // Use header image from DexScreener if available
+            // First try to get header from token object
+            let headerValue = token.header;
+            
+            // If header is not in token object, try to get it from the DOM element's data attribute as fallback
+            if ((!headerValue || headerValue === null || headerValue === '') && event.currentTarget) {
+                const headerAttr = event.currentTarget.getAttribute('data-header');
+                if (headerAttr && headerAttr.trim() !== '' && headerAttr !== 'null') {
+                    headerValue = headerAttr;
+                }
+            }
+            
+            // Check if header exists and is a valid non-empty string
+            const hasHeader = headerValue && 
+                             headerValue !== null && 
+                             headerValue !== undefined && 
+                             headerValue !== '' && 
+                             typeof headerValue === 'string' && 
+                             headerValue.trim() !== '' &&
+                             headerValue.trim().toLowerCase() !== 'null' &&
+                             headerValue.trim().toLowerCase() !== 'undefined';
+            
+            if (hasHeader) {
+                displayImageUrl = headerValue.trim();
+                isHeaderImage = true;
+            } else {
+                // Fallback to token image or icon
+                displayImageUrl = token.image || (token.mint ? `https://images.pump.fun/coin-image/${token.mint}?variant=86x86` : null);
+            }
+        } else {
+            // For other events, use token image
+            displayImageUrl = token.image || (token.mint ? `https://images.pump.fun/coin-image/${token.mint}?variant=86x86` : null);
+        }
+        
+        // Get description from DexScreener data (for CTO, Boost, Ads)
+        let dexDescription = '';
+        if (eventData.type === 'cto' || eventData.type === 'boost' || eventData.type === 'ads') {
+            dexDescription = token.description || '';
+            // Fallback to data attribute if not in token object
+            if (!dexDescription && event.currentTarget) {
+                const descAttr = event.currentTarget.getAttribute('data-description');
+                if (descAttr && descAttr.trim() !== '') {
+                    dexDescription = descAttr;
+                }
+            }
+        }
+        
+        // Get Twitter handle for OG events
+        let twitterHandle = null;
+        if (eventData.type === 'og' && token.twitter) {
+            twitterHandle = this.extractTwitterHandle(token.twitter);
+        }
+
+        // Create tooltip element
+        const tooltip = document.createElement('div');
+        tooltip.id = 'tokenEventTooltip';
+        tooltip.className = 'token-event-tooltip';
+
+        // Use different image class for header images (banner style) vs token icons (circular)
+        const imageClass = isHeaderImage ? 'token-event-tooltip-header-image' : 'token-event-tooltip-image';
+        const imageContainerClass = isHeaderImage ? 'token-event-tooltip-header-container' : 'token-event-tooltip-image-container';
+
+        let content = `
+            <div class="token-event-tooltip-name">${this.escapeHtml(name)}</div>
+            <div class="token-event-tooltip-symbol">${this.escapeHtml(symbol)}</div>
+            <div class="${imageContainerClass}">
+                ${displayImageUrl ? `<img src="${this.escapeHtml(displayImageUrl)}" alt="${this.escapeHtml(name)}" class="${imageClass}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` : ''}
+                <div class="token-event-tooltip-image-placeholder" style="${displayImageUrl ? 'display: none;' : ''}">
+                    ${symbol.substring(0, 2).toUpperCase()}
+                </div>
+            </div>
+        `;
+
+        // Add DexScreener description if available
+        if (dexDescription) {
+            content += `<div class="token-event-tooltip-dex-header">${this.escapeHtml(dexDescription)}</div>`;
+        }
+        
+        // Add Twitter handle for OG events
+        if (twitterHandle) {
+            content += `<div class="token-event-tooltip-twitter-handle">@${this.escapeHtml(twitterHandle)}</div>`;
+        }
+
+        tooltip.innerHTML = content;
+        document.body.appendChild(tooltip);
+
+        // Position tooltip near the item
+        const rect = event.currentTarget.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+
+        // Position above the item, centered
+        tooltip.style.left = `${rect.left + (rect.width / 2) - (tooltipRect.width / 2)}px`;
+        tooltip.style.top = `${rect.top - tooltipRect.height - 10}px`;
+
+        // Ensure tooltip stays within viewport
+        const maxLeft = window.innerWidth - tooltipRect.width - 10;
+        const minLeft = 10;
+        if (parseInt(tooltip.style.left) > maxLeft) {
+            tooltip.style.left = `${maxLeft}px`;
+        }
+        if (parseInt(tooltip.style.left) < minLeft) {
+            tooltip.style.left = `${minLeft}px`;
+        }
+
+        // If tooltip would go above viewport, show below instead
+        if (parseInt(tooltip.style.top) < 10) {
+            tooltip.style.top = `${rect.bottom + 10}px`;
+        }
+    }
+
+    hideTokenEventTooltip() {
+        const tooltip = document.getElementById('tokenEventTooltip');
+        if (tooltip) {
+            tooltip.remove();
+        }
+    }
+
+    formatNumber(num) {
+        if (num >= 1000000) {
+            return (num / 1000000).toFixed(1) + 'M';
+        } else if (num >= 1000) {
+            return (num / 1000).toFixed(1) + 'K';
+        }
+        return num.toString();
+    }
+
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
+
+    updateTopLiveStream(streamData) {
+        if (!this.topLiveStreamContent) {
+            console.warn('[Scout] Top live stream content element not found');
+            return;
+        }
+
+        // Check if this is a new top stream (first assignment or mint changed)
+        // Trigger animation if:
+        // 1. This is the first stream (previousTopStreamMint is null) OR
+        // 2. The mint has changed
+        const isNewTopStream = streamData && 
+                               streamData.mint && 
+                               (this.previousTopStreamMint === null || 
+                                this.previousTopStreamMint === undefined ||
+                                streamData.mint !== this.previousTopStreamMint);
+
+        this.currentTopStream = streamData;
+
+        if (!streamData) {
+            // No stream available
+            // Update previous mint to null when stream is cleared
+            this.previousTopStreamMint = null;
+            this.topLiveStreamContent.innerHTML = '<div class="top-live-stream-waiting">No stream available</div>';
+            return;
+        }
+
+        // If this is a new top stream, show animation and play sound
+        if (isNewTopStream) {
+            this.showNewTopStreamAnimation();
+            this.playDingSound();
+        }
+
+        // Update previous mint after checking if it's new
+        if (streamData && streamData.mint) {
+            this.previousTopStreamMint = streamData.mint;
+        }
+
+        const marketCapFormatted = streamData.marketCapUSD > 0 ? this.formatUSD(streamData.marketCapUSD) : 'N/A';
+        const athFormatted = streamData.athMarketCap > 0 ? this.formatUSD(streamData.athMarketCap) : '';
+        const imageUrl = streamData.image || (streamData.mint ? `https://images.pump.fun/coin-image/${streamData.mint}?variant=86x86` : null);
+        const symbolText = streamData.symbol || 'UNKNOWN';
+
+        const html = `
+            <div class="top-live-stream-item" data-mint="${streamData.mint}" style="cursor: pointer;">
+                ${imageUrl ? `<img src="${imageUrl}" alt="${this.escapeHtml(streamData.name)}" class="top-live-stream-icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` : ''}
+                <div class="top-live-stream-icon-placeholder" style="${imageUrl ? 'display: none;' : ''}">
+                    ${symbolText.substring(0, 2)}
+                </div>
+                <div class="top-live-stream-info">
+                    <div class="top-live-stream-symbol-row">
+                        <span class="top-live-stream-symbol">${this.escapeHtml(symbolText)}</span>
+                        <span class="top-live-stream-participants">👥 ${streamData.participants || 0}</span>
+                    </div>
+                    <div class="top-live-stream-marketcap">${marketCapFormatted}</div>
+                    ${athFormatted ? `<div class="top-live-stream-ath">ATH: ${athFormatted}</div>` : ''}
+                </div>
+            </div>
+        `;
+
+        this.topLiveStreamContent.innerHTML = html;
+
+        // Add click handler
+        const streamItem = this.topLiveStreamContent.querySelector('.top-live-stream-item');
+        if (streamItem && streamData.mint) {
+            streamItem.addEventListener('click', () => {
+                window.open(`https://pump.fun/${streamData.mint}`, '_blank');
+            });
+
+            // Add hover handler for tooltip
+            streamItem.addEventListener('mouseenter', (e) => {
+                this.showTopLiveStreamTooltip(e, streamData);
+            });
+
+            streamItem.addEventListener('mouseleave', () => {
+                this.hideTopLiveStreamTooltip();
+            });
+        }
+    }
+
+    showTopLiveStreamTooltip(event, streamData) {
+        // Remove existing tooltip
+        const existing = document.getElementById('topLiveStreamTooltip');
+        if (existing) {
+            existing.remove();
+        }
+
+        const name = streamData.name || 'Unknown';
+        const symbol = streamData.symbol || 'UNKNOWN';
+        const imageUrl = streamData.image || (streamData.mint ? `https://images.pump.fun/coin-image/${streamData.mint}?variant=86x86` : null);
+        const thumbnail = streamData.thumbnail || null;
+
+        // Create tooltip element
+        const tooltip = document.createElement('div');
+        tooltip.id = 'topLiveStreamTooltip';
+        tooltip.className = 'token-event-tooltip';
+
+        let content = `
+            <div class="token-event-tooltip-name">${this.escapeHtml(name)}</div>
+            <div class="token-event-tooltip-symbol">${this.escapeHtml(symbol)}</div>
+            <div class="token-event-tooltip-image-container">
+                ${imageUrl ? `<img src="${this.escapeHtml(imageUrl)}" alt="${this.escapeHtml(name)}" class="token-event-tooltip-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` : ''}
+                <div class="token-event-tooltip-image-placeholder" style="${imageUrl ? 'display: none;' : ''}">
+                    ${symbol.substring(0, 2).toUpperCase()}
+                </div>
+            </div>
+        `;
+
+        // Add thumbnail if available
+        if (thumbnail) {
+            content += `<div class="token-event-tooltip-thumbnail"><img src="${this.escapeHtml(thumbnail)}" alt="Stream thumbnail" onerror="this.style.display='none';"></div>`;
+        }
+
+        tooltip.innerHTML = content;
+        document.body.appendChild(tooltip);
+
+        // Position tooltip near the item
+        const rect = event.currentTarget.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+        const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+
+        let left = rect.left + scrollX + (rect.width / 2) - (tooltipRect.width / 2);
+        let top = rect.bottom + scrollY + 10;
+
+        // Adjust if tooltip goes off screen
+        if (left + tooltipRect.width > window.innerWidth + scrollX) {
+            left = window.innerWidth + scrollX - tooltipRect.width - 10;
+        }
+        if (left < scrollX) {
+            left = scrollX + 10;
+        }
+        if (top + tooltipRect.height > window.innerHeight + scrollY) {
+            top = rect.top + scrollY - tooltipRect.height - 10;
+        }
+
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${top}px`;
+    }
+
+    hideTopLiveStreamTooltip() {
+        const tooltip = document.getElementById('topLiveStreamTooltip');
+        if (tooltip) {
+            tooltip.remove();
+        }
+    }
+
+    showNewTopStreamAnimation() {
+        if (!this.topLiveStreamSlot) {
+            return;
+        }
+
+        // Remove existing animation if any
+        const existingAnimation = this.topLiveStreamSlot.querySelector('.new-top-stream-badge');
+        if (existingAnimation) {
+            existingAnimation.remove();
+        }
+
+        // Create animation badge
+        const badge = document.createElement('div');
+        badge.className = 'new-top-stream-badge';
+        badge.textContent = 'New Top Stream';
+        this.topLiveStreamSlot.appendChild(badge);
+
+        // Trigger animation
+        setTimeout(() => {
+            badge.classList.add('slide-in');
+        }, 10);
+
+        // Remove badge after animation completes
+        setTimeout(() => {
+            badge.classList.add('slide-out');
+            setTimeout(() => {
+                if (badge.parentNode) {
+                    badge.remove();
+                }
+            }, 400);
+        }, 2500);
+    }
+
+    playDingSound() {
+        try {
+            // Initialize audio context if needed
+            if (!this.audioContext) {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // Resume audio context if suspended
+            if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume();
+            }
+
+            // Create a simple ding sound using oscillator
+            const oscillator = this.audioContext.createOscillator();
+            const gainNode = this.audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+
+            // Set frequency for a pleasant ding sound (higher pitch)
+            oscillator.frequency.value = 800;
+            oscillator.type = 'sine';
+
+            // Set volume envelope (quick attack, quick decay)
+            const now = this.audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.3, now + 0.01); // Quick attack
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3); // Quick decay
+
+            // Play the sound
+            oscillator.start(now);
+            oscillator.stop(now + 0.3);
+        } catch (error) {
+            console.warn('Error playing ding sound:', error);
+        }
+    }
 }
 
 // Initialize app
 let scoutApp;
+console.log('[Scout] 🚀 Initializing ScoutApp...');
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
+        console.log('[Scout] 🚀 DOMContentLoaded - Creating ScoutApp instance...');
         scoutApp = new ScoutApp();
+        console.log('[Scout] 🚀 ScoutApp instance created:', scoutApp);
+        // Check if we should open the modal based on URL hash
+        if (window.location.hash === '#login' || window.location.hash === '#profile') {
+            // Small delay to ensure modal is ready
+            setTimeout(() => {
+                if (scoutApp && scoutApp.openDmAlertsModal) {
+                    scoutApp.openDmAlertsModal();
+                }
+            }, 100);
+        }
     });
 } else {
+    console.log('[Scout] 🚀 DOM already loaded - Creating ScoutApp instance...');
     scoutApp = new ScoutApp();
+    console.log('[Scout] 🚀 ScoutApp instance created:', scoutApp);
+    // Check if we should open the modal based on URL hash
+    if (window.location.hash === '#login' || window.location.hash === '#profile') {
+        // Small delay to ensure modal is ready
+        setTimeout(() => {
+            if (scoutApp && scoutApp.openDmAlertsModal) {
+                scoutApp.openDmAlertsModal();
+            }
+        }, 100);
+    }
 }
 
 // Make functions globally available

@@ -41,6 +41,16 @@ let alertIdCounter = 1;
 // Format: username-mint-alertId
 const triggeredUserAlerts = new Set();
 
+// Track processed token events (CTO, Boost, Ads)
+const processedCTOs = new Set(); // Track processed CTO event IDs (tokenAddress)
+const processedBoosts = new Set(); // Track processed Boost event IDs (tokenAddress)
+const processedAds = new Set(); // Track processed Ads event IDs (tokenAddress)
+const processedOGs = new Map(); // Track OG events (twitter -> [{mint: string, created: number}, ...])
+const triggeredOGTwitter = new Set(); // Track Twitter addresses that have already triggered an OG event
+let currentTopStreamMint = null; // Track the current top stream token mint
+let currentTopStreamParticipants = 0; // Track the current top stream participant count
+let currentTopStreamThumbnail = null; // Track the current top stream thumbnail
+
 // Configuration: Store tokens in memory and subscribe to trades
 // If false, only broadcast to connected clients without storing
 const STORE_TOKENS = true;
@@ -68,6 +78,7 @@ const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_API_KEY}`;
 const app = express();
 const server = createServer(app);
 const io = new Server(server);
+
 
 // Force HTTPS redirect middleware
 app.use((req, res, next) => {
@@ -168,17 +179,17 @@ async function readClients() {
         }
     } else {
         // Fall back to JSON file
-        const clientsPath = join(__dirname, 'clients.json');
-        try {
-            if (fs.existsSync(clientsPath)) {
-                const data = fs.readFileSync(clientsPath, 'utf8');
-                return JSON.parse(data);
-            }
-        } catch (error) {
-            console.error('Error reading clients.json:', error.message);
+    const clientsPath = join(__dirname, 'clients.json');
+    try {
+        if (fs.existsSync(clientsPath)) {
+            const data = fs.readFileSync(clientsPath, 'utf8');
+            return JSON.parse(data);
         }
-        return {};
+    } catch (error) {
+        console.error('Error reading clients.json:', error.message);
     }
+    return {};
+}
 }
 
 // Helper function to write clients (Postgres or JSON)
@@ -214,13 +225,13 @@ async function writeClients(clients) {
         }
     } else {
         // Fall back to JSON file
-        const clientsPath = join(__dirname, 'clients.json');
-        try {
-            fs.writeFileSync(clientsPath, JSON.stringify(clients, null, 2), 'utf8');
-            return true;
-        } catch (error) {
-            console.error('Error writing clients.json:', error.message);
-            return false;
+    const clientsPath = join(__dirname, 'clients.json');
+    try {
+        fs.writeFileSync(clientsPath, JSON.stringify(clients, null, 2), 'utf8');
+        return true;
+    } catch (error) {
+        console.error('Error writing clients.json:', error.message);
+        return false;
         }
     }
 }
@@ -247,8 +258,8 @@ app.post('/api/users/check-username', async (req, res) => {
     
     try {
         const clients = await readClients();
-        const isAvailable = !clients[username.toLowerCase()];
-        res.json({ available: isAvailable });
+    const isAvailable = !clients[username.toLowerCase()];
+    res.json({ available: isAvailable });
     } catch (error) {
         console.error('Error checking username:', error);
         res.status(500).json({ error: 'Error checking username availability' });
@@ -276,27 +287,27 @@ app.post('/api/users/create', async (req, res) => {
     
     try {
         const clients = await readClients();
-        const usernameLower = username.toLowerCase();
-        
-        if (clients[usernameLower]) {
-            return res.status(409).json({ error: 'Username already taken' });
-        }
-        
-        // Create new user profile
-        clients[usernameLower] = {
-            username: username,
-            passwordHash: hashPassword(password),
-            alerts: [],
-            telegramLinked: false,
-            telegramChatId: null,
-            createdAt: Date.now()
-        };
-        
+    const usernameLower = username.toLowerCase();
+    
+    if (clients[usernameLower]) {
+        return res.status(409).json({ error: 'Username already taken' });
+    }
+    
+    // Create new user profile
+    clients[usernameLower] = {
+        username: username,
+        passwordHash: hashPassword(password),
+        alerts: [],
+        telegramLinked: false,
+        telegramChatId: null,
+        createdAt: Date.now()
+    };
+    
         const success = await writeClients(clients);
         if (success) {
-            res.json({ success: true, message: 'Profile created successfully' });
-        } else {
-            res.status(500).json({ error: 'Failed to create profile' });
+        res.json({ success: true, message: 'Profile created successfully' });
+    } else {
+        res.status(500).json({ error: 'Failed to create profile' });
         }
     } catch (error) {
         console.error('Error creating user profile:', error);
@@ -314,23 +325,23 @@ app.post('/api/users/login', async (req, res) => {
     
     try {
         const clients = await readClients();
-        const usernameLower = username.toLowerCase();
-        const user = clients[usernameLower];
-        
-        if (!user) {
-            return res.status(401).json({ error: 'Invalid username or password' });
-        }
-        
-        const passwordHash = hashPassword(password);
-        if (user.passwordHash !== passwordHash) {
-            return res.status(401).json({ error: 'Invalid username or password' });
-        }
-        
-        res.json({ 
-            success: true, 
-            username: user.username,
-            telegramLinked: user.telegramLinked || false
-        });
+    const usernameLower = username.toLowerCase();
+    const user = clients[usernameLower];
+    
+    if (!user) {
+        return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    
+    const passwordHash = hashPassword(password);
+    if (user.passwordHash !== passwordHash) {
+        return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    
+    res.json({ 
+        success: true, 
+        username: user.username,
+        telegramLinked: user.telegramLinked || false
+    });
     } catch (error) {
         console.error('Error logging in user:', error);
         res.status(500).json({ error: 'Error authenticating user' });
@@ -351,27 +362,27 @@ app.post('/api/users/save-alerts', async (req, res) => {
     
     try {
         const clients = await readClients();
-        const usernameLower = username.toLowerCase();
-        const user = clients[usernameLower];
-        
-        if (!user) {
-            return res.status(401).json({ error: 'User not found' });
-        }
-        
-        const passwordHash = hashPassword(password);
-        if (user.passwordHash !== passwordHash) {
-            return res.status(401).json({ error: 'Invalid password' });
-        }
-        
-        // Save alerts to user profile
-        user.alerts = alerts;
-        user.updatedAt = Date.now();
-        
+    const usernameLower = username.toLowerCase();
+    const user = clients[usernameLower];
+    
+    if (!user) {
+        return res.status(401).json({ error: 'User not found' });
+    }
+    
+    const passwordHash = hashPassword(password);
+    if (user.passwordHash !== passwordHash) {
+        return res.status(401).json({ error: 'Invalid password' });
+    }
+    
+    // Save alerts to user profile
+    user.alerts = alerts;
+    user.updatedAt = Date.now();
+    
         const success = await writeClients(clients);
         if (success) {
-            res.json({ success: true, message: 'Alerts saved successfully' });
-        } else {
-            res.status(500).json({ error: 'Failed to save alerts' });
+        res.json({ success: true, message: 'Alerts saved successfully' });
+    } else {
+        res.status(500).json({ error: 'Failed to save alerts' });
         }
     } catch (error) {
         console.error('Error saving alerts:', error);
@@ -389,23 +400,23 @@ app.post('/api/users/get-alerts', async (req, res) => {
     
     try {
         const clients = await readClients();
-        const usernameLower = username.toLowerCase();
-        const user = clients[usernameLower];
-        
-        if (!user) {
-            return res.status(401).json({ error: 'User not found' });
-        }
-        
-        const passwordHash = hashPassword(password);
-        if (user.passwordHash !== passwordHash) {
-            return res.status(401).json({ error: 'Invalid password' });
-        }
-        
-        res.json({ 
-            success: true, 
-            alerts: user.alerts || [],
-            telegramLinked: user.telegramLinked || false
-        });
+    const usernameLower = username.toLowerCase();
+    const user = clients[usernameLower];
+    
+    if (!user) {
+        return res.status(401).json({ error: 'User not found' });
+    }
+    
+    const passwordHash = hashPassword(password);
+    if (user.passwordHash !== passwordHash) {
+        return res.status(401).json({ error: 'Invalid password' });
+    }
+    
+    res.json({ 
+        success: true, 
+        alerts: user.alerts || [],
+        telegramLinked: user.telegramLinked || false
+    });
     } catch (error) {
         console.error('Error getting alerts:', error);
         res.status(500).json({ error: 'Error getting alerts' });
@@ -621,6 +632,33 @@ app.get('/api/developer-tokens/:address', async (req, res) => {
     }
 });
 
+// API endpoint to fetch token data for event updates
+app.get('/api/token/:mint', async (req, res) => {
+    try {
+        const { mint } = req.params;
+        const tokenData = await getToken(mint);
+        if (!tokenData) {
+            res.status(404).json({ error: 'Token not found' });
+            return;
+        }
+        
+        // Calculate marketcap in SOL and USD
+        const marketCapSol = tokenData.market_cap || tokenData.usd_market_cap_sol || 0;
+        const marketCapUSD = tokenData.usd_market_cap || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+        const athMarketCap = tokenData.ath_market_cap || 0;
+        
+        res.json({
+            mint: mint,
+            marketCapUSD: marketCapUSD,
+            marketCapSol: marketCapSol,
+            athMarketCap: athMarketCap
+        });
+    } catch (error) {
+        console.error(`Error fetching token data for ${mint}:`, error.message);
+        res.status(500).json({ error: 'Failed to fetch token data' });
+    }
+});
+
 // Serve static files
 app.use(express.static(join(__dirname, 'public')));
 
@@ -670,6 +708,35 @@ io.on('connection', (socket) => {
     // Send current metas to newly connected client
     if (currentMetas && currentMetas.length > 0) {
         socket.emit('metas:current', { metas: currentMetas });
+    }
+    
+    // Send current top live stream to newly connected client
+    if (currentTopStreamMint && currentTopStreamParticipants > 0) {
+        // Get fresh token data for the current top stream
+        getToken(currentTopStreamMint).then(tokenData => {
+            if (tokenData) {
+                const marketCapSol = tokenData.usd_market_cap_sol || 0;
+                const marketCapUSD = tokenData.usd_market_cap || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+                const athMarketCap = tokenData.ath_market_cap || 0;
+                
+                const streamData = {
+                    mint: currentTopStreamMint,
+                    name: tokenData.name || 'Unknown',
+                    symbol: tokenData.symbol || 'UNKNOWN',
+                    image: tokenData.image_uri || null,
+                    thumbnail: currentTopStreamThumbnail || null,
+                    participants: currentTopStreamParticipants,
+                    marketCapSol: marketCapSol,
+                    marketCapUSD: marketCapUSD,
+                    athMarketCap: athMarketCap
+                };
+                
+                socket.emit('top-live-stream:update', streamData);
+                console.log('[Socket] Sent current top stream to new client:', socket.id);
+            }
+        }).catch(error => {
+            console.error('[Socket] Error fetching top stream for new client:', error.message);
+        });
     }
     
     // Send all current tokens to the newly connected client (only if storing)
@@ -754,6 +821,10 @@ io.on('connection', (socket) => {
                 }
                 if (tokenData.telegram !== undefined && token.telegram !== tokenData.telegram) {
                     token.telegram = tokenData.telegram;
+                    hasChanges = true;
+                }
+                if (tokenData.banner_uri !== undefined && token.banner_uri !== tokenData.banner_uri) {
+                    token.banner_uri = tokenData.banner_uri;
                     hasChanges = true;
                 }
                 
@@ -1339,19 +1410,37 @@ async function comScrape(url) {
 }
 
 server.listen(PORT, async () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`🚀 Starting initialization...`);
     
+    try {
     // Fetch Solana price at server start
+        console.log(`🚀 Fetching Solana price...`);
     await updateSolanaPrice();
+        console.log(`🚀 Solana price fetched`);
     
     // Update Solana price every minute
     setInterval(updateSolanaPrice, 60000); // 60000ms = 1 minute
     
     // Fetch current metas at startup
+        console.log(`🚀 Fetching current metas...`);
     await updateCurrentMetas();
+        console.log(`🚀 Current metas fetched`);
     
     // Update metas every 5 minutes
     setInterval(updateCurrentMetas, 300000); // 300000ms = 5 minutes
+        
+        // Start token events polling (CTO, Boost, Ads, Live Streams)
+        console.log(`🚀 About to call startTokenEventsPolling()...`);
+        startTokenEventsPolling().catch(error => {
+            console.error('❌ Error starting token events polling:', error);
+            console.error('❌ Error stack:', error.stack);
+        });
+        console.log(`🚀 startTokenEventsPolling() called`);
+    } catch (error) {
+        console.error('❌ Error during server initialization:', error);
+        console.error('❌ Error stack:', error.stack);
+    }
 });
 
 /**
@@ -1399,7 +1488,9 @@ async function updateCurrentMetas() {
  */
 async function getToken(mint) {
     try {
-        const response = await axios.get(`https://frontend-api-v3.pump.fun/coins/${mint}`);
+        const response = await axios.get(`https://frontend-api-v3.pump.fun/coins/${mint}`, {
+            timeout: 10000
+        });
         
         // Check if response data is empty
         if (!response.data || Object.keys(response.data).length === 0) {
@@ -1408,8 +1499,915 @@ async function getToken(mint) {
         
         return response.data;
     } catch (error) {
+        if (error.response && error.response.status === 404) {
+            // Token not found (not a pumpfun token)
+            return null;
+        }
         console.error(`Error fetching token data for ${mint}:`, error.message);
-        throw error;
+        return null;
+    }
+}
+
+/**
+ * Check if a token is a pumpfun token by fetching it from the API
+ * @param {string} mint - The token mint address
+ * @returns {Promise<Object|null>} Token data if it's a pumpfun token, null otherwise
+ */
+async function isPumpfunToken(mint) {
+    try {
+        const tokenData = await getToken(mint);
+        return tokenData;
+    } catch (error) {
+        return null;
+    }
+}
+
+/**
+ * Fetch header image from DexScreener search API
+ * @param {string} mintAddress - The token mint address
+ * @returns {Promise<string|null>} Header image URL or null if not found
+ */
+async function getDexScreenerHeader(mintAddress) {
+    try {
+        const response = await axios.get(`https://api.dexscreener.com/latest/dex/search?q=${mintAddress}`, {
+            timeout: 10000
+        });
+        
+        if (!response.data || !response.data.pairs || !Array.isArray(response.data.pairs) || response.data.pairs.length === 0) {
+            return null;
+        }
+        
+        // Get the first pair (usually the most relevant one)
+        const firstPair = response.data.pairs[0];
+        if (firstPair && firstPair.info && firstPair.info.header) {
+            return firstPair.info.header;
+        }
+        
+        return null;
+    } catch (error) {
+        // Silently handle errors
+        return null;
+    }
+}
+
+/**
+ * Poll DexScreener APIs for token events (CTO, Boost, Ads)
+ */
+async function startTokenEventsPolling() {
+    console.log('🚀 [Token Events] Starting token events polling...');
+    
+    try {
+        // At startup, find the most recent pumpfun event from each API and report it
+        console.log('🚀 [Token Events] Checking CTO events at startup...');
+        await checkCTOEventsAtStartup();
+        
+        console.log('🚀 [Token Events] Checking Boost events at startup...');
+        await checkBoostEventsAtStartup();
+        
+        console.log('🚀 [Token Events] Checking Ads events at startup...');
+        await checkAdsEventsAtStartup();
+        
+        console.log('🚀 [Token Events] Checking Live Stream events at startup...');
+        await checkLiveStreamEventsAtStartup();
+        
+        // Poll immediately, then every 5 seconds
+        console.log('🚀 [Token Events] Starting initial poll...');
+        await checkCTOEvents();
+        await checkBoostEvents();
+        await checkAdsEvents();
+        await checkLiveStreamEvents();
+        
+        console.log('🚀 [Token Events] Setting up polling interval (5 seconds)...');
+        setInterval(async () => {
+            try {
+                await checkCTOEvents();
+                await checkBoostEvents();
+                await checkAdsEvents();
+                await checkLiveStreamEvents();
+            } catch (error) {
+                console.error('🚀 [Token Events] Error in polling interval:', error);
+            }
+        }, 5000); // 5 seconds
+        
+        console.log('🚀 [Token Events] Polling setup complete!');
+    } catch (error) {
+        console.error('🚀 [Token Events] Error starting token events polling:', error);
+        console.error('🚀 [Token Events] Error stack:', error.stack);
+    }
+}
+
+/**
+ * Check for most recent pumpfun CTO at startup
+ */
+async function checkCTOEventsAtStartup() {
+    try {
+        const response = await axios.get('https://api.dexscreener.com/community-takeovers/latest/v1', {
+            timeout: 10000
+        });
+        
+        if (!response.data || !Array.isArray(response.data)) {
+            return;
+        }
+        
+        const ctos = response.data;
+        let firstPumpfunCTO = null;
+        
+        // First pass: Find all pumpfun tokens and mark them as processed
+        // Also identify the first (most recent) one to emit
+        for (const cto of ctos) {
+            if (cto.chainId !== 'solana') {
+                continue;
+            }
+            
+            // Check if it's a pumpfun token
+            const tokenData = await isPumpfunToken(cto.tokenAddress);
+            if (tokenData) {
+                // Mark ALL pumpfun tokens as processed (so regular polling won't process them)
+                processedCTOs.add(cto.tokenAddress);
+                
+                // Store the first one we find (most recent) to emit
+                if (!firstPumpfunCTO) {
+                    firstPumpfunCTO = {
+                        cto: cto,
+                        tokenData: tokenData
+                    };
+                }
+            }
+        }
+        
+        // Only emit the first (most recent) pumpfun CTO
+        if (firstPumpfunCTO) {
+            const { cto, tokenData } = firstPumpfunCTO;
+            console.log(`[CTO Startup] Found most recent pumpfun CTO: ${tokenData.name} (${tokenData.symbol}) - ${cto.tokenAddress}`);
+            
+            // Get marketcap from tokenData
+            const marketCapSol = tokenData.usd_market_cap_sol || 0;
+            const marketCapUSD = tokenData.usd_market_cap || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+            const athMarketCap = tokenData.ath_market_cap || 0;
+            
+            // Emit the event
+            io.emit('token:event', {
+                type: 'cto',
+                token: {
+                    mint: cto.tokenAddress,
+                    name: tokenData.name || 'Unknown',
+                    symbol: tokenData.symbol || 'UNKNOWN',
+                    image: tokenData.image_uri || cto.icon || null,
+                    header: cto.header || null,
+                    url: cto.url,
+                    description: cto.description || '',
+                    links: cto.links || [],
+                    claimDate: cto.claimDate,
+                    marketCapSol: marketCapSol,
+                    marketCapUSD: marketCapUSD,
+                    athMarketCap: athMarketCap
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error checking CTO events at startup:', error.message);
+    }
+}
+
+/**
+ * Check for new CTO (Community Takeover) events
+ */
+async function checkCTOEvents() {
+    try {
+        const response = await axios.get('https://api.dexscreener.com/community-takeovers/latest/v1', {
+            timeout: 10000
+        });
+        
+        if (!response.data || !Array.isArray(response.data)) {
+            return;
+        }
+        
+        const ctos = response.data;
+        
+        // Process events in reverse order (newest first) but only emit new ones
+        for (const cto of ctos) {
+            // Skip if already processed
+            if (processedCTOs.has(cto.tokenAddress)) {
+                continue;
+            }
+            
+            // Only process Solana tokens
+            if (cto.chainId !== 'solana') {
+                continue;
+            }
+            
+            // Check if it's a pumpfun token
+            const tokenData = await isPumpfunToken(cto.tokenAddress);
+            if (!tokenData) {
+                continue;
+            }
+            
+            // Mark as processed
+            processedCTOs.add(cto.tokenAddress);
+            
+            // Get marketcap from tokenData
+            const marketCapSol = tokenData.usd_market_cap_sol || 0;
+            const marketCapUSD = tokenData.usd_market_cap || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+            const athMarketCap = tokenData.ath_market_cap || 0;
+            
+            // Emit CTO event to all connected clients
+            io.emit('token:event', {
+                type: 'cto',
+                token: {
+                    mint: cto.tokenAddress,
+                    name: tokenData.name || 'Unknown',
+                    symbol: tokenData.symbol || 'UNKNOWN',
+                    image: tokenData.image_uri || cto.icon || null,
+                    header: cto.header || null,
+                    url: cto.url,
+                    description: cto.description || '',
+                    links: cto.links || [],
+                    claimDate: cto.claimDate,
+                    marketCapSol: marketCapSol,
+                    marketCapUSD: marketCapUSD,
+                    athMarketCap: athMarketCap
+                }
+            });
+            
+            console.log(`[CTO Event] ${tokenData.name} (${tokenData.symbol}) - ${cto.tokenAddress}`);
+        }
+    } catch (error) {
+        console.error('Error checking CTO events:', error.message);
+    }
+}
+
+/**
+ * Check for most recent pumpfun Boost at startup
+ */
+async function checkBoostEventsAtStartup() {
+    try {
+        const response = await axios.get('https://api.dexscreener.com/token-boosts/latest/v1', {
+            timeout: 10000
+        });
+        
+        if (!response.data) {
+            return;
+        }
+        
+        // Boost API returns an object, not an array
+        let boosts = [];
+        if (Array.isArray(response.data)) {
+            boosts = response.data;
+        } else if (response.data && typeof response.data === 'object') {
+            // If it's a single object, wrap it in an array
+            boosts = [response.data];
+        } else {
+            return;
+        }
+        
+        let firstPumpfunBoost = null;
+        
+        // First pass: Find all pumpfun tokens and mark them as processed
+        // Also identify the first (most recent) one to emit
+        for (const boost of boosts) {
+            if (boost.chainId !== 'solana') {
+                continue;
+            }
+            
+            // Check if it's a pumpfun token
+            const tokenData = await isPumpfunToken(boost.tokenAddress);
+            if (tokenData) {
+                // Mark ALL pumpfun tokens as processed (so regular polling won't process them)
+                processedBoosts.add(boost.tokenAddress);
+                
+                // Store the first one we find (most recent) to emit
+                if (!firstPumpfunBoost) {
+                    firstPumpfunBoost = {
+                        boost: boost,
+                        tokenData: tokenData
+                    };
+                }
+            }
+        }
+        
+        // Only emit the first (most recent) pumpfun Boost
+        if (firstPumpfunBoost) {
+            const { boost, tokenData } = firstPumpfunBoost;
+            console.log(`[Boost Startup] Found most recent pumpfun Boost: ${tokenData.name} (${tokenData.symbol}) - ${boost.tokenAddress}`);
+            
+            // Get marketcap from tokenData
+            const marketCapSol = tokenData.usd_market_cap_sol || 0;
+            const marketCapUSD = tokenData.usd_market_cap || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+            const athMarketCap = tokenData.ath_market_cap || 0;
+            
+            // Emit the event
+            io.emit('token:event', {
+                type: 'boost',
+                token: {
+                    mint: boost.tokenAddress,
+                    name: tokenData.name || 'Unknown',
+                    symbol: tokenData.symbol || 'UNKNOWN',
+                    image: tokenData.image_uri || boost.icon || null,
+                    header: boost.header || null,
+                    url: boost.url,
+                    description: boost.description || '',
+                    links: boost.links || [],
+                    amount: boost.amount || 0,
+                    totalAmount: boost.totalAmount || 0,
+                    marketCapSol: marketCapSol,
+                    marketCapUSD: marketCapUSD,
+                    athMarketCap: athMarketCap
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error checking Boost events at startup:', error.message);
+    }
+}
+
+/**
+ * Check for new Boost events
+ */
+async function checkBoostEvents() {
+    try {
+        const response = await axios.get('https://api.dexscreener.com/token-boosts/latest/v1', {
+            timeout: 10000
+        });
+        
+        if (!response.data) {
+            return;
+        }
+        
+        // Boost API returns an object, not an array
+        let boosts = [];
+        if (Array.isArray(response.data)) {
+            boosts = response.data;
+        } else if (response.data && typeof response.data === 'object') {
+            // If it's a single object, wrap it in an array
+            boosts = [response.data];
+        } else {
+            return;
+        }
+        
+        for (const boost of boosts) {
+            // Skip if already processed (use tokenAddress as key)
+            if (processedBoosts.has(boost.tokenAddress)) {
+                continue;
+            }
+            
+            // Only process Solana tokens
+            if (boost.chainId !== 'solana') {
+                continue;
+            }
+            
+            // Check if it's a pumpfun token
+            const tokenData = await isPumpfunToken(boost.tokenAddress);
+            if (!tokenData) {
+                continue;
+            }
+            
+            // Mark as processed
+            processedBoosts.add(boost.tokenAddress);
+            
+            // Get marketcap from tokenData
+            const marketCapSol = tokenData.usd_market_cap_sol || 0;
+            const marketCapUSD = tokenData.usd_market_cap || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+            const athMarketCap = tokenData.ath_market_cap || 0;
+            
+            // Emit Boost event to all connected clients
+            io.emit('token:event', {
+                type: 'boost',
+                token: {
+                    mint: boost.tokenAddress,
+                    name: tokenData.name || 'Unknown',
+                    symbol: tokenData.symbol || 'UNKNOWN',
+                    image: tokenData.image_uri || boost.icon || null,
+                    header: boost.header || null,
+                    url: boost.url,
+                    description: boost.description || '',
+                    links: boost.links || [],
+                    amount: boost.amount || 0,
+                    totalAmount: boost.totalAmount || 0,
+                    marketCapSol: marketCapSol,
+                    marketCapUSD: marketCapUSD,
+                    athMarketCap: athMarketCap
+                }
+            });
+            
+            console.log(`[Boost Event] ${tokenData.name} (${tokenData.symbol}) - ${boost.tokenAddress} - Amount: ${boost.amount}/${boost.totalAmount}`);
+        }
+    } catch (error) {
+        console.error('Error checking Boost events:', error.message);
+    }
+}
+
+/**
+ * Check for most recent pumpfun Ads at startup
+ */
+async function checkAdsEventsAtStartup() {
+    try {
+        const response = await axios.get('https://api.dexscreener.com/ads/latest/v1', {
+            timeout: 10000
+        });
+        
+        if (!response.data) {
+            return;
+        }
+        
+        // Ads API returns an array
+        let ads = [];
+        if (Array.isArray(response.data)) {
+            ads = response.data;
+        } else {
+            return;
+        }
+        
+        let firstPumpfunAd = null;
+        
+        // First pass: Find all pumpfun tokens and mark them as processed
+        // Also identify the first (most recent) one to emit
+        for (const ad of ads) {
+            if (ad.chainId !== 'solana') {
+                continue;
+            }
+            
+            // Check if it's a pumpfun token
+            const tokenData = await isPumpfunToken(ad.tokenAddress);
+            if (tokenData) {
+                // Mark ALL pumpfun tokens as processed (so regular polling won't process them)
+                const adKey = `${ad.tokenAddress}-${ad.date}`;
+                processedAds.add(adKey);
+                
+                // Store the first one we find (most recent) to emit
+                if (!firstPumpfunAd) {
+                    firstPumpfunAd = {
+                        ad: ad,
+                        tokenData: tokenData
+                    };
+                }
+            }
+        }
+        
+        // Only emit the first (most recent) pumpfun Ads
+        if (firstPumpfunAd) {
+            const { ad, tokenData } = firstPumpfunAd;
+            console.log(`[Ads Startup] Found most recent pumpfun Ads: ${tokenData.name} (${tokenData.symbol}) - ${ad.tokenAddress}`);
+            
+            // Get marketcap from tokenData
+            const marketCapSol = tokenData.usd_market_cap_sol || 0;
+            const marketCapUSD = tokenData.usd_market_cap || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+            const athMarketCap = tokenData.ath_market_cap || 0;
+            
+            // Get header from ad, or fetch from DexScreener search API if not available
+            let header = ad.header || null;
+            if (!header) {
+                header = await getDexScreenerHeader(ad.tokenAddress);
+            }
+            
+            // Emit the event
+            io.emit('token:event', {
+                type: 'ads',
+                token: {
+                    mint: ad.tokenAddress,
+                    name: tokenData.name || 'Unknown',
+                    symbol: tokenData.symbol || 'UNKNOWN',
+                    image: tokenData.image_uri || ad.icon || null,
+                    header: header,
+                    url: ad.url,
+                    date: ad.date,
+                    type: ad.type || '',
+                    description: ad.description || '',
+                    durationHours: ad.durationHours || 0,
+                    impressions: ad.impressions || 0,
+                    marketCapSol: marketCapSol,
+                    marketCapUSD: marketCapUSD,
+                    athMarketCap: athMarketCap
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error checking Ads events at startup:', error.message);
+    }
+}
+
+/**
+ * Check for new Ads events
+ */
+async function checkAdsEvents() {
+    try {
+        const response = await axios.get('https://api.dexscreener.com/ads/latest/v1', {
+            timeout: 10000
+        });
+        
+        if (!response.data) {
+            return;
+        }
+        
+        // Ads API returns an array
+        let ads = [];
+        if (Array.isArray(response.data)) {
+            ads = response.data;
+        } else {
+            return;
+        }
+        
+        for (const ad of ads) {
+            // Skip if already processed (use tokenAddress + date as key for uniqueness)
+            const adKey = `${ad.tokenAddress}-${ad.date}`;
+            if (processedAds.has(adKey)) {
+                continue;
+            }
+            
+            // Only process Solana tokens
+            if (ad.chainId !== 'solana') {
+                continue;
+            }
+            
+            // Check if it's a pumpfun token
+            const tokenData = await isPumpfunToken(ad.tokenAddress);
+            if (!tokenData) {
+                continue;
+            }
+            
+            // Mark as processed
+            processedAds.add(adKey);
+            
+            // Get marketcap from tokenData
+            const marketCapSol = tokenData.usd_market_cap_sol || 0;
+            const marketCapUSD = tokenData.usd_market_cap || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+            const athMarketCap = tokenData.ath_market_cap || 0;
+            
+            // Get header from ad, or fetch from DexScreener search API if not available
+            let header = ad.header || null;
+            if (!header) {
+                header = await getDexScreenerHeader(ad.tokenAddress);
+            }
+            
+            // Emit Ads event to all connected clients
+            io.emit('token:event', {
+                type: 'ads',
+                token: {
+                    mint: ad.tokenAddress,
+                    name: tokenData.name || 'Unknown',
+                    symbol: tokenData.symbol || 'UNKNOWN',
+                    image: tokenData.image_uri || ad.icon || null,
+                    header: header,
+                    url: ad.url,
+                    date: ad.date,
+                    type: ad.type || '',
+                    description: ad.description || '',
+                    durationHours: ad.durationHours || 0,
+                    impressions: ad.impressions || 0,
+                    marketCapSol: marketCapSol,
+                    marketCapUSD: marketCapUSD,
+                    athMarketCap: athMarketCap
+                }
+            });
+            
+            console.log(`[Ads Event] ${tokenData.name} (${tokenData.symbol}) - ${ad.tokenAddress} - Duration: ${ad.durationHours}h, Impressions: ${ad.impressions}, Header: ${header || 'none'}`);
+        }
+    } catch (error) {
+        console.error('Error checking Ads events:', error.message);
+    }
+}
+
+/**
+ * Check for most recent pumpfun live stream at startup
+ */
+async function checkLiveStreamEventsAtStartup() {
+    console.log('[Live Stream Startup] ⚡ FUNCTION CALLED - Checking for top stream at startup...');
+    try {
+        console.log('[Live Stream Startup] Making API request to pump.fun...');
+        const response = await axios.get('https://frontend-api-v3.pump.fun/coins/currently-live', {
+            headers: {
+                'Accept': 'application/json',
+            },
+            timeout: 10000
+        });
+        
+        console.log('[Live Stream Startup] API response received, data:', response.data ? (Array.isArray(response.data) ? `${response.data.length} streams` : 'not an array') : 'no data');
+        
+        if (!response.data || !Array.isArray(response.data) || response.data.length === 0) {
+            console.log('[Live Stream Startup] No streams found at startup');
+            return;
+        }
+        
+        // Find the token with the most participants
+        let topStream = null;
+        let maxParticipants = 0;
+        
+        for (const stream of response.data) {
+            // Check for participants field (could be num_participants or participants)
+            const participants = stream.num_participants || stream.participants || 0;
+            console.log('[Live Stream Startup] Stream found:', stream.mint, 'participants:', participants);
+            if (participants > maxParticipants && participants > 0) {
+                maxParticipants = participants;
+                topStream = stream;
+            }
+        }
+        
+        if (topStream && topStream.mint) {
+            console.log('[Live Stream Startup] Top stream found:', topStream.mint, 'with', maxParticipants, 'participants');
+            // Get token data to verify it's a pumpfun token and get marketcap
+            const tokenData = await getToken(topStream.mint);
+            if (tokenData) {
+                currentTopStreamMint = topStream.mint;
+                currentTopStreamParticipants = maxParticipants;
+                currentTopStreamThumbnail = topStream.thumbnail || null;
+                console.log(`[Live Stream Startup] Found top stream: ${tokenData.name || 'Unknown'} (${tokenData.symbol || 'UNKNOWN'}) - ${topStream.mint} - ${maxParticipants} viewers`);
+                
+                // Emit the current top stream to connected clients at startup
+                const marketCapSol = tokenData.usd_market_cap_sol || 0;
+                const marketCapUSD = tokenData.usd_market_cap || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+                const athMarketCap = tokenData.ath_market_cap || 0;
+                
+                const streamData = {
+                    mint: topStream.mint,
+                    name: tokenData.name || 'Unknown',
+                    symbol: tokenData.symbol || 'UNKNOWN',
+                    image: tokenData.image_uri || null,
+                    thumbnail: currentTopStreamThumbnail,
+                    participants: maxParticipants,
+                    marketCapSol: marketCapSol,
+                    marketCapUSD: marketCapUSD,
+                    athMarketCap: athMarketCap
+                };
+                
+                if (io && io.sockets.sockets.size > 0) {
+                    try {
+                        io.emit('top-live-stream:update', streamData);
+                        console.log('[Live Stream Startup] ✅ Emitted top stream at startup');
+                    } catch (emitError) {
+                        console.error('[Live Stream Startup] ❌ ERROR emitting top stream:', emitError);
+                    }
+                }
+            } else {
+                console.log('[Live Stream Startup] Token data not found for mint:', topStream.mint);
+            }
+        } else {
+            console.log('[Live Stream Startup] No valid top stream found at startup');
+        }
+    } catch (error) {
+        console.error('[Live Stream Startup] Error checking Live Stream events at startup:', error.message);
+        console.error('[Live Stream Startup] Error stack:', error.stack);
+    }
+}
+
+/**
+ * Check for new Live Stream events (when a token becomes the top stream)
+ */
+async function checkLiveStreamEvents() {
+    console.log('[Live Stream Check] ⚡ FUNCTION CALLED - Starting live stream check...');
+    try {
+        console.log('[Live Stream Check] Making API request to pump.fun...');
+        const response = await axios.get('https://frontend-api-v3.pump.fun/coins/currently-live', {
+            headers: {
+                'Accept': 'application/json',
+            },
+            timeout: 10000
+        });
+        
+        console.log('[Live Stream Check] API response received, data:', response.data ? (Array.isArray(response.data) ? `${response.data.length} streams` : 'not an array') : 'no data');
+        
+        if (!response.data || !Array.isArray(response.data) || response.data.length === 0) {
+            console.log('[Live Stream Check] No streams found or invalid response');
+            return;
+        }
+        
+        // Find the token with the most participants
+        let topStream = null;
+        let maxParticipants = 0;
+        
+        for (const stream of response.data) {
+            // Check for participants field (could be num_participants or participants)
+            const participants = stream.num_participants || stream.participants || 0;
+            console.log('[Live Stream Check] Stream:', stream.mint ? stream.mint.substring(0, 8) : 'no mint', 'participants:', participants, 'has mint:', !!stream.mint);
+            if (participants > maxParticipants && participants > 0) {
+                maxParticipants = participants;
+                topStream = stream;
+            }
+        }
+        
+        console.log('[Live Stream Check] Top stream found:', topStream ? `mint: ${topStream.mint}, participants: ${maxParticipants}` : 'none');
+        console.log('[Live Stream Check] Current top stream mint:', currentTopStreamMint);
+        
+        if (!topStream && response.data.length > 0) {
+            console.log('[Live Stream Check] WARNING: Streams found but none have participants > 0. Sample stream:', JSON.stringify(response.data[0], null, 2));
+        }
+        
+        // If there's a top stream, always update clients with current top stream
+        if (topStream && topStream.mint) {
+            // Get token data to verify it's a pumpfun token and get marketcap
+            console.log('[Live Stream Check] Fetching token data for:', topStream.mint);
+            const tokenData = await getToken(topStream.mint);
+            if (tokenData) {
+                console.log('[Live Stream Check] Token data received:', tokenData.name || 'Unknown');
+                
+                // Update current top stream tracking
+                currentTopStreamMint = topStream.mint;
+                currentTopStreamParticipants = maxParticipants;
+                currentTopStreamThumbnail = topStream.thumbnail || null;
+                
+                // Get marketcap from tokenData
+                const marketCapSol = tokenData.usd_market_cap_sol || 0;
+                const marketCapUSD = tokenData.usd_market_cap || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+                const athMarketCap = tokenData.ath_market_cap || 0;
+                
+                // Always emit current top stream to all connected clients
+                const streamData = {
+                    mint: topStream.mint,
+                    name: tokenData.name || 'Unknown',
+                    symbol: tokenData.symbol || 'UNKNOWN',
+                    image: tokenData.image_uri || null,
+                    thumbnail: currentTopStreamThumbnail,
+                    participants: maxParticipants,
+                    marketCapSol: marketCapSol,
+                    marketCapUSD: marketCapUSD,
+                    athMarketCap: athMarketCap
+                };
+                
+                // Check if io is defined
+                if (!io) {
+                    console.error('[Live Stream Check] ❌ ERROR: io is not defined!');
+                    return;
+                }
+                
+                const connectedClients = io.sockets.sockets.size;
+                console.log('[Live Stream Check] Emitting top stream update to', connectedClients, 'clients');
+                
+                if (connectedClients > 0) {
+                    try {
+                        io.emit('top-live-stream:update', streamData);
+                        console.log(`[Live Stream Check] ✅ Emitted top stream update: ${tokenData.name || 'Unknown'} (${tokenData.symbol || 'UNKNOWN'}) - ${maxParticipants} viewers`);
+                    } catch (emitError) {
+                        console.error('[Live Stream Check] ❌ ERROR emitting top stream update:', emitError);
+                        console.error('[Live Stream Check] Error stack:', emitError.stack);
+                    }
+                }
+            } else {
+                console.log('[Live Stream Check] ❌ Token data not found for mint:', topStream.mint);
+            }
+        } else {
+            // No top stream found - emit null to clear the slot
+            console.log('[Live Stream Check] No top stream found, clearing top stream slot');
+            currentTopStreamMint = null;
+            currentTopStreamParticipants = 0;
+            currentTopStreamThumbnail = null;
+            
+            if (io && io.sockets.sockets.size > 0) {
+                try {
+                    io.emit('top-live-stream:update', null);
+                    console.log('[Live Stream Check] ✅ Emitted top stream clear (no stream)');
+                } catch (emitError) {
+                    console.error('[Live Stream Check] ❌ ERROR emitting top stream clear:', emitError);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('[Live Stream Check] Error checking Live Stream events:', error.message);
+        console.error('[Live Stream Check] Error stack:', error.stack);
+    }
+}
+
+/**
+ * Check for OG event (3+ tokens with same Twitter link)
+ * @param {Object} token - The token to check
+ */
+async function checkOGEvent(token) {
+    if (!token || !token.twitter || !token.mint || !token.created) {
+        return;
+    }
+    
+    try {
+        // Normalize twitter URL (extract base URL without status ID)
+        const twitterUrl = token.twitter;
+        const twitterMatch = twitterUrl.match(/^(https?:\/\/(?:twitter\.com|x\.com)\/[^\/]+)/i);
+        if (!twitterMatch) {
+            return; // Invalid Twitter URL format
+        }
+        
+        const twitterBase = twitterMatch[1].toLowerCase();
+        
+        // If this Twitter address has already triggered an OG event, skip it entirely
+        if (triggeredOGTwitter.has(twitterBase)) {
+            return;
+        }
+        
+        const currentTime = token.created;
+        const OG_TIME_WINDOW = 30000;
+        
+        // Initialize or get existing OG data for this Twitter link
+        if (!processedOGs.has(twitterBase)) {
+            processedOGs.set(twitterBase, []);
+        }
+        
+        const ogTokens = processedOGs.get(twitterBase);
+        
+        // Check if this token is already tracked
+        const existingTokenIndex = ogTokens.findIndex(t => t.mint === token.mint);
+        if (existingTokenIndex === -1) {
+            // Add this token with its creation timestamp
+            ogTokens.push({
+                mint: token.mint,
+                created: currentTime
+            });
+        } else {
+            // Update the creation time if it changed
+            ogTokens[existingTokenIndex].created = currentTime;
+        }
+        
+        // Clean up tokens older than 10 seconds (keep a reasonable window for checking)
+        const now = Date.now();
+        const recentTokens = ogTokens.filter(t => (now - t.created) <= 10000);
+        processedOGs.set(twitterBase, recentTokens);
+        
+        // Check if there's a 3-second window that contains 3+ tokens
+        // Sort tokens by creation time
+        recentTokens.sort((a, b) => a.created - b.created);
+        
+        // For each token, check if there are 2 other tokens within 3 seconds
+        for (let i = 0; i < recentTokens.length; i++) {
+            const baseToken = recentTokens[i];
+            const windowStart = baseToken.created;
+            const windowEnd = baseToken.created + OG_TIME_WINDOW;
+            
+            // Find all tokens in this 3-second window
+            const tokensInWindow = recentTokens.filter(t => 
+                t.created >= windowStart && t.created <= windowEnd
+            );
+            
+            // If we have 3+ tokens in this window, trigger OG event
+            if (tokensInWindow.length >= 3) {
+                // The OG token is the first one in the window (oldest)
+                const ogMint = tokensInWindow[0].mint;
+                
+                // Check if we've already emitted an OG event for this specific group
+                // Use a key based on the OG mint and the tokens in the window to prevent duplicates
+                const windowKey = tokensInWindow.map(t => t.mint).sort().join('-');
+                const emissionKey = `og-${ogMint}-${windowKey}`;
+                
+                if (!triggeredUserAlerts.has(emissionKey)) {
+                    triggeredUserAlerts.add(emissionKey);
+                    
+                    // Mark this Twitter address as having triggered an OG event
+                    triggeredOGTwitter.add(twitterBase);
+                    
+                    // Get token data from storage or cache
+                    let ogToken = STORE_TOKENS ? tokens.get(ogMint) : tokenCache.get(ogMint);
+                    if (!ogToken) {
+                        // Fallback: try to get from the tokenCache or use current token
+                        ogToken = tokenCache.get(ogMint) || token;
+                    }
+                    
+                    // Try to get latest token data from API for ATH and other info
+                    let tokenData = null;
+                    try {
+                        tokenData = await getToken(ogMint);
+                    } catch (error) {
+                        // If API call fails, continue with cached data
+                    }
+                    
+                    // Get marketcap from token
+                    const marketCapSol = ogToken.marketCapSol || ogToken.value || 0;
+                    const marketCapUSD = ogToken.marketCapUSD || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+                    
+                    // Get ATH from token data - check multiple possible fields
+                    let athMarketCap = 0;
+                    if (tokenData) {
+                        // Check various possible ATH fields in API response
+                        athMarketCap = tokenData.ath_market_cap || 
+                                      tokenData.ath_marketcap || 
+                                      tokenData.athMarketCap || 
+                                      tokenData.athMarketcap ||
+                                      (tokenData.ath && tokenData.ath.market_cap) ||
+                                      (tokenData.ath && tokenData.ath.marketCap) ||
+                                      0;
+                    }
+                    // Fallback to cached token ATH if API doesn't have it
+                    if (!athMarketCap && ogToken) {
+                        athMarketCap = ogToken.athMarketCap || ogToken.ath_market_cap || ogToken.allTimeHigh || 0;
+                    }
+                    
+                    // Emit OG event
+                    io.emit('token:event', {
+                        type: 'og',
+                        token: {
+                            mint: ogToken.mint,
+                            name: ogToken.name || tokenData?.name || 'Unknown',
+                            symbol: ogToken.symbol || tokenData?.symbol || 'UNKNOWN',
+                            image: ogToken.image || tokenData?.image_uri || null,
+                            twitter: ogToken.twitter || tokenData?.twitter || null,
+                            tokenCount: tokensInWindow.length,
+                            marketCapSol: marketCapSol,
+                            marketCapUSD: marketCapUSD,
+                            athMarketCap: athMarketCap
+                        }
+                    });
+                    
+                    console.log(`[OG Event] ${ogToken.name} (${ogToken.symbol}) - ${tokensInWindow.length} tokens created within 3 seconds with Twitter: ${twitterBase}`);
+                    
+                    // Only emit once per window, so break after finding the first valid window
+                    break;
+                }
+            }
+        }
+    } catch (error) {
+        console.error(`Error checking OG event for token ${token.mint}:`, error.message);
     }
 }
 
@@ -2005,6 +3003,8 @@ ws.send(JSON.stringify(payload));
             console.error(`Error checking user alerts for token ${response.mint}:`, error.message);
         });
         
+        // Note: OG event will be checked when twitter metadata is updated
+        
         // Also check alerts again after a delay to catch metadata-dependent alerts
         // Metadata is fetched asynchronously, so we need to re-check when it becomes available
         setTimeout(() => {
@@ -2043,6 +3043,7 @@ ws.send(JSON.stringify(payload));
                             twitter: null,
                             website: null,
                             telegram: null,
+                            banner_uri: apiTokenData.banner_uri || null,
                             marketCapSol: apiTokenData.usd_market_cap_sol || 0,
                             allTimeHigh: apiTokenData.usd_market_cap_sol || 0, // Initialize ATH
                             totalBuys: 0,
@@ -2079,6 +3080,12 @@ ws.send(JSON.stringify(payload));
                 token.twitter = uriData.twitter;
                 hasChanges = true;
                 twitterUpdated = true;
+                // Check for OG event when twitter is updated
+                if (uriData.twitter) {
+                    checkOGEvent(token).catch(error => {
+                        console.error(`Error checking OG event for token ${token.mint}:`, error.message);
+                    });
+                }
             }
             if (uriData.website !== undefined && token.website !== uriData.website) {
                 token.website = uriData.website;
@@ -2089,6 +3096,7 @@ ws.send(JSON.stringify(payload));
                 token.telegram = uriData.telegram;
                 hasChanges = true;
             }
+            // Note: banner_uri is not in URI metadata, it comes from getToken API only
 
             if (hasChanges) {
                 // Update both storage and cache
@@ -2132,6 +3140,7 @@ ws.send(JSON.stringify(payload));
                     twitter: null,
                     website: null,
                     telegram: null,
+                    banner_uri: tokenData.banner_uri || null,
                     marketCapSol: tokenData.usd_market_cap_sol || 0,
                     allTimeHigh: tokenData.usd_market_cap_sol || 0, // Initialize ATH
                     totalBuys: 0,
@@ -2160,6 +3169,12 @@ ws.send(JSON.stringify(payload));
                 token.twitter = tokenData.twitter;
                 hasChanges = true;
                 twitterUpdated = true;
+                // Check for OG event when twitter is updated
+                if (tokenData.twitter) {
+                    checkOGEvent(token).catch(error => {
+                        console.error(`Error checking OG event for token ${token.mint}:`, error.message);
+                    });
+                }
             }
             if (tokenData.website !== undefined && token.website !== tokenData.website) {
                 token.website = tokenData.website;
@@ -2168,6 +3183,10 @@ ws.send(JSON.stringify(payload));
             }
             if (tokenData.telegram !== undefined && token.telegram !== tokenData.telegram) {
                 token.telegram = tokenData.telegram;
+                hasChanges = true;
+            }
+            if (tokenData.banner_uri !== undefined && token.banner_uri !== tokenData.banner_uri) {
+                token.banner_uri = tokenData.banner_uri;
                 hasChanges = true;
             }
 
@@ -2344,6 +3363,23 @@ ws.send(JSON.stringify(payload));
         tokenData.complete = true;
         tokenData.migratedAt = token.migratedAt;
         io.emit('token:complete', tokenData);
+        
+        // Get marketcap from token
+        const marketCapSol = token.marketCapSol || token.value || 0;
+        const marketCapUSD = token.marketCapUSD || (marketCapSol && solanaPriceUSD ? marketCapSol * solanaPriceUSD : 0);
+        
+        // Emit migration event for token events ticker
+        io.emit('token:event', {
+            type: 'migration',
+            token: {
+                mint: token.mint,
+                name: token.name || 'Unknown',
+                symbol: token.symbol || 'UNKNOWN',
+                image: token.image || null,
+                marketCapSol: marketCapSol,
+                marketCapUSD: marketCapUSD
+            }
+        });
         
         // Also send as regular update so clients see the change
         broadcastTokenUpdate(token);

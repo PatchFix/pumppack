@@ -288,6 +288,411 @@ button.home-btn {
     flex-shrink: 0;
 }
 
+/* Token Events Ticker */
+.token-events-ticker-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    margin-bottom: 1rem;
+    overflow: visible;
+    min-height: 60px;
+    position: relative;
+}
+
+.top-live-stream-slot {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    flex-shrink: 0;
+    position: relative;
+    overflow: visible;
+}
+
+.top-live-stream-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.top-live-stream-waiting {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.top-live-stream-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.top-live-stream-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.top-live-stream-icon-placeholder {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    border: 2px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.top-live-stream-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.top-live-stream-symbol-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+}
+
+.top-live-stream-symbol {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.top-live-stream-participants {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.top-live-stream-marketcap {
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.top-live-stream-ath {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.new-top-stream-badge {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) translateX(-150%);
+    background: var(--success);
+    color: var(--bg-primary);
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0;
+    z-index: 1000;
+    pointer-events: none;
+    box-shadow: var(--shadow-md);
+    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.new-top-stream-badge.slide-in {
+    opacity: 1;
+    transform: translate(-50%, -50%) translateX(0);
+}
+
+.new-top-stream-badge.slide-out {
+    opacity: 0;
+    transform: translate(-50%, -50%) translateX(-150%);
+}
+
+
+.token-events-ticker-wrapper {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.token-events-ticker {
+    display: flex;
+    gap: 1rem;
+    white-space: nowrap;
+    align-items: center;
+    padding-right: 1rem;
+}
+
+.token-events-waiting {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    font-style: italic;
+    padding: 0.5rem 1rem;
+    text-align: center;
+    width: 100%;
+}
+
+.token-events-ticker-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-height: 56px;
+    transition: background-color 0.2s ease, transform 0.3s ease, opacity 0.3s ease;
+    cursor: pointer;
+    animation: slideInFromRight 0.4s ease-out;
+}
+
+.token-events-event-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.125rem;
+    flex-shrink: 0;
+}
+
+@keyframes slideInFromRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.token-events-ticker-item.slide-out {
+    animation: slideOutToLeft 0.3s ease-in forwards;
+}
+
+@keyframes slideOutToLeft {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+}
+
+.token-events-ticker-item:hover {
+    background: var(--bg-secondary);
+}
+
+.event-emoji {
+    font-size: 1.25rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.event-context {
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    font-weight: 500;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.token-events-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.token-events-icon-placeholder {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--bg-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.token-events-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.token-events-symbol {
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.token-events-marketcap {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.2;
+    transition: color 0.3s ease;
+}
+
+.token-events-marketcap.marketcap-up {
+    color: #4ade80; /* Green for increase */
+}
+
+.token-events-marketcap.marketcap-down {
+    color: #f87171; /* Red for decrease */
+}
+
+.token-events-ath {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 500;
+    line-height: 1.2;
+    margin-top: 0.125rem;
+}
+
+/* Token Event Tooltip */
+.token-event-tooltip {
+    position: fixed;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10000;
+    max-width: 280px;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.75rem;
+}
+
+.token-event-tooltip-name {
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.token-event-tooltip-symbol {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.2;
+}
+
+.token-event-tooltip-image-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0.5rem 0;
+}
+
+.token-event-tooltip-image {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--border-color);
+}
+
+.token-event-tooltip-header-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0.5rem 0;
+    width: 100%;
+}
+
+.token-event-tooltip-header-image {
+    width: 100%;
+    max-width: 240px;
+    height: auto;
+    max-height: 120px;
+    border-radius: var(--radius-sm);
+    object-fit: contain;
+    border: 2px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.token-event-tooltip-image-placeholder {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    border: 2px solid var(--border-color);
+}
+
+.token-event-tooltip-dex-header {
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.4;
+    margin-top: 0.25rem;
+    word-wrap: break-word;
+    max-width: 100%;
+}
+
+.token-event-tooltip-twitter-handle {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-top: 0.25rem;
+}
+
+.token-event-tooltip-thumbnail {
+    margin-top: 0.5rem;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    max-width: 100%;
+}
+
+.token-event-tooltip-thumbnail img {
+    width: 100%;
+    max-width: 240px;
+    height: auto;
+    display: block;
+    border-radius: var(--radius-sm);
+}
+
+
 .live-streams-icon-placeholder {
     width: 32px;
     height: 32px;
@@ -2141,6 +2546,68 @@ body[data-theme="pump"] .settings-option-btn.active:hover {
 .dex-token-card:hover {
     border-color: var(--accent-primary);
     box-shadow: var(--shadow-sm);
+}
+
+.dex-token-card.has-banner {
+    position: relative;
+}
+
+.token-banner-hover {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 0.5rem;
+    z-index: 1000;
+    pointer-events: none;
+    width: 300px;
+    max-width: calc(100vw - 2rem);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+    border: 2px solid var(--border-color);
+    background: var(--bg-card);
+}
+
+.dex-token-card.has-banner:hover .token-banner-hover {
+    display: block;
+}
+
+.token-banner-hover::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 8px solid var(--border-color);
+    z-index: 1;
+}
+
+.token-banner-hover::after {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 6px solid var(--bg-card);
+    z-index: 2;
+}
+
+.token-banner-hover img {
+    width: 100%;
+    height: auto;
+    display: block;
+    max-height: 200px;
+    object-fit: cover;
 }
 
 .dex-token-card.pulse-buy {
