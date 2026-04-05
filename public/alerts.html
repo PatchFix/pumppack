@@ -65,6 +65,15 @@
       object-fit: cover;
       border-radius: 8px;
     }
+    .box-placeholder {
+      color: #666;
+      font-size: 14px;
+      text-align: center;
+      padding: 12px;
+      line-height: 1.35;
+      user-select: none;
+      pointer-events: none;
+    }
     .remove-btn {
       display: none;
       margin-top: 20px; /* moved further down */
@@ -122,17 +131,17 @@
   </div>
   <div class="grid">
     <div class="box-container">
-      <div class="box" onclick="handleBoxClick(this)"></div>
+      <div class="box" onclick="handleBoxClick(this)"><span class="box-placeholder">Click to add CA</span></div>
       <div class="token-info"></div>
       <button class="remove-btn" onclick="removeToken(this)">Remove</button>
     </div>
     <div class="box-container">
-      <div class="box" onclick="handleBoxClick(this)"></div>
+      <div class="box" onclick="handleBoxClick(this)"><span class="box-placeholder">Click to add CA</span></div>
       <div class="token-info"></div>
       <button class="remove-btn" onclick="removeToken(this)">Remove</button>
     </div>
     <div class="box-container">
-      <div class="box" onclick="handleBoxClick(this)"></div>
+      <div class="box" onclick="handleBoxClick(this)"><span class="box-placeholder">Click to add CA</span></div>
       <div class="token-info"></div>
       <button class="remove-btn" onclick="removeToken(this)">Remove</button>
     </div>
@@ -140,6 +149,10 @@
 
   <script>
     const tokens = []; // store {address, box, lastStatus, infoDiv, profileData, lastBoostCount, lastSocialCount}
+
+    function setBoxPlaceholder(box) {
+      box.innerHTML = '<span class="box-placeholder">Click to add CA</span>';
+    }
 
     async function getDex(mint) {
       try {
@@ -271,7 +284,7 @@
       const container = btn.parentElement;
       const box = container.querySelector(".box");
       const infoDiv = container.querySelector(".token-info");
-      box.innerHTML = "";
+      setBoxPlaceholder(box);
       infoDiv.innerHTML = "";
       infoDiv.classList.remove('visible');
       btn.style.display = "none";
