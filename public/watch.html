@@ -70,12 +70,15 @@
       font-size: 1.6rem;
     }
     .watch-status {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
       display: inline-flex;
       align-items: center;
       gap: 8px;
       font-size: 13px;
       color: #888;
-      margin-bottom: 18px;
     }
     .watch-status-dot {
       width: 10px;
@@ -108,6 +111,28 @@
     }
     .watch-platform-selector select:hover { border-color: #666; }
     .watch-platform-selector select:focus { border-color: #4a9eff; }
+    .back-home-nav {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+    .back-home-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: #6bb3ff;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .back-home-link:hover {
+      text-decoration: underline;
+    }
+    .back-home-link img {
+      height: 36px;
+      width: auto;
+      display: block;
+      flex-shrink: 0;
+    }
     .watch-filters-panel {
       width: 100%;
       max-width: 520px;
@@ -121,12 +146,6 @@
       margin: 0 0 12px 0;
       font-size: 1rem;
       color: #c8c8c8;
-    }
-    .watch-filters-hint {
-      font-size: 12px;
-      color: #666;
-      margin: 0 0 12px 0;
-      line-height: 1.4;
     }
     .watch-add-row {
       display: flex;
@@ -324,13 +343,14 @@
   <canvas id="backgroundCanvas"></canvas>
   <div class="stars-container" id="starsContainer" aria-hidden="true"></div>
 
+  <div class="watch-status" id="watchStatus" aria-live="polite">
+    <span class="watch-status-dot" id="watchStatusDot"></span>
+    <span id="watchStatusText">Disconnected</span>
+  </div>
+
   <div class="watch-main">
     <div class="watch-header">
       <h1>Launch Watch</h1>
-      <div class="watch-status" id="watchStatus">
-        <span class="watch-status-dot" id="watchStatusDot"></span>
-        <span id="watchStatusText">Disconnected</span>
-      </div>
       <div class="watch-platform-selector">
         <label for="platformSelect">Trading platform:</label>
         <select id="platformSelect" aria-label="Trading platform for card clicks">
@@ -339,11 +359,16 @@
           <option value="terminal">Terminal</option>
         </select>
       </div>
+      <div class="back-home-nav">
+        <a href="index.html" class="back-home-link">
+          <img src="foxdown.png" alt="" width="72" height="72" decoding="async" />
+          <span>Back Home</span>
+        </a>
+      </div>
     </div>
 
     <div class="watch-filters-panel">
       <h2>Alert rules</h2>
-      <p class="watch-filters-hint">New Pump.fun tokens are matched after a ~1s Pump API refresh. Any rule can trigger an alert (OR). Add at least one rule.</p>
       <div class="watch-add-row">
         <select id="ruleType" aria-label="Rule type">
           <option value="deployer">Deployer wallet</option>

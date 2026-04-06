@@ -67,7 +67,7 @@ let currentMetas = [];
 // Launch token tracking
 // This will be set to the mint address when the specified developer creates a token
 let launchToken = null;
-const LAUNCH_DEVELOPER_WALLET = '9nUxMiVqrSiUnQqXVYPdJz13u1ZaDN9AMDQyTDjxk7m8';
+const LAUNCH_DEVELOPER_WALLET = 'AvHaC68btjF1d4mSDggW3ChbY4dkF3wrE9XKe5N2kzmx';
 
 // Telegram Bot Configuration
 const TELEGRAM_BOT_NAME = 'PFKit_bot';
@@ -620,25 +620,6 @@ app.get('/api/live-streams', async (req, res) => {
     }
 });
 
-// API endpoint to proxy developer tokens (avoid CORS issues)
-app.get('/api/developer-tokens/:address', async (req, res) => {
-    try {
-        const { address } = req.params;
-        console.log(`[Server] Fetching developer tokens for address: ${address}`);
-        const response = await axios.get(`https://frontend-api-v3.pump.fun/coins/user-created-coins/${address}?offset=0&limit=100&includeNsfw=true`, {
-            headers: {
-                'Accept': 'application/json',
-            },
-            timeout: 10000
-        });
-        
-        res.json(response.data);
-    } catch (error) {
-        console.error('Error fetching developer tokens:', error.message);
-        res.status(500).json({ error: 'Failed to fetch developer tokens' });
-    }
-});
-
 // API endpoint to fetch token data for event updates
 app.get('/api/token/:mint', async (req, res) => {
     try {
@@ -663,6 +644,22 @@ app.get('/api/token/:mint', async (req, res) => {
     } catch (error) {
         console.error(`Error fetching token data for ${mint}:`, error.message);
         res.status(500).json({ error: 'Failed to fetch token data' });
+    }
+});
+
+// Full Pump.fun coin record (for watch clients; avoids browser CORS on frontend-api-v3)
+app.get('/api/pump-coin/:mint', async (req, res) => {
+    try {
+        const { mint } = req.params;
+        const tokenData = await getToken(mint);
+        if (!tokenData) {
+            res.status(404).json({ error: 'Token not found' });
+            return;
+        }
+        res.json(tokenData);
+    } catch (error) {
+        console.error(`Error fetching pump coin ${req.params.mint}:`, error.message);
+        res.status(500).json({ error: 'Failed to fetch token' });
     }
 });
 
@@ -1235,9 +1232,8 @@ async function updateSolanaPrice() {
     }
 }
 
-// Start the server (Fly.io / Docker: bind 0.0.0.0 so the proxy can reach the app)
-const PORT = Number(process.env.PORT) || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
+// Start the server
+const PORT = process.env.PORT || 3000;
 /**
  * Test function to scrape community creator from a URL using headless browser
  * @param {string} url - The URL to scrape (e.g., X.com community page, pump.fun token page)
@@ -1417,8 +1413,8 @@ async function comScrape(url) {
     }
 }
 
-server.listen(PORT, HOST, async () => {
-    console.log(`🚀 Server listening on http://${HOST}:${PORT}`);
+server.listen(PORT, async () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`🚀 Starting initialization...`);
     
     try {
@@ -1558,11 +1554,6 @@ async function getDexScreenerHeader(mintAddress) {
     }
 }
 
-/** Dex CTO / Boost / Ads polling interval */
-const TOKEN_EVENTS_POLL_MS = 5000;
-/** Live stream leaderboard changes slowly; avoid hammering pump.fun API */
-const LIVE_STREAM_POLL_MS = 30000;
-
 /**
  * Poll DexScreener APIs for token events (CTO, Boost, Ads)
  */
@@ -1583,13 +1574,14 @@ async function startTokenEventsPolling() {
         console.log('🚀 [Token Events] Checking Live Stream events at startup...');
         await checkLiveStreamEventsAtStartup();
         
-        // Poll Dex events immediately, then every TOKEN_EVENTS_POLL_MS (live stream uses its own slower interval)
-        console.log('🚀 [Token Events] Starting initial poll (CTO / Boost / Ads)...');
+        // Poll immediately; CTO/Boost/Ads every 5s, live streams every 30s
+        console.log('🚀 [Token Events] Starting initial poll...');
         await checkCTOEvents();
         await checkBoostEvents();
         await checkAdsEvents();
+        await checkLiveStreamEvents();
         
-        console.log(`🚀 [Token Events] Setting up Dex polling interval (${TOKEN_EVENTS_POLL_MS / 1000}s)...`);
+        console.log('🚀 [Token Events] Setting up CTO/Boost/Ads polling (5 seconds)...');
         setInterval(async () => {
             try {
                 await checkCTOEvents();
@@ -1598,16 +1590,16 @@ async function startTokenEventsPolling() {
             } catch (error) {
                 console.error('🚀 [Token Events] Error in polling interval:', error);
             }
-        }, TOKEN_EVENTS_POLL_MS);
-        
-        console.log(`🚀 [Live Stream] Setting up polling interval (${LIVE_STREAM_POLL_MS / 1000}s)...`);
+        }, 5000); // 5 seconds
+
+        console.log('🚀 [Live Stream] Setting up live stream polling (30 seconds)...');
         setInterval(async () => {
             try {
                 await checkLiveStreamEvents();
             } catch (error) {
                 console.error('🚀 [Live Stream] Error in polling interval:', error);
             }
-        }, LIVE_STREAM_POLL_MS);
+        }, 30000); // 30 seconds
         
         console.log('🚀 [Token Events] Polling setup complete!');
     } catch (error) {
@@ -2432,49 +2424,6 @@ async function checkOGEvent(token) {
 }
 
 /**
- * Fetch tokens created by a deployer address
- * @param {string} address - The deployer wallet address
- * @returns {Promise<Array|null>} Array of tokens created by the deployer, or null if not found
- */
-async function getCreated(address) {
-    try {
-        const response = await axios.get(`https://frontend-api-v3.pump.fun/coins/user-created-coins/${address}?offset=0&limit=100&includeNsfw=true`);
-        
-        // Check if response data is empty
-        if (!response.data) {
-            return null;
-        }
-        
-        // Handle different response structures
-        let tokens = null;
-        if (Array.isArray(response.data)) {
-            // Response is directly an array
-            tokens = response.data;
-        } else if (response.data.data && Array.isArray(response.data.data)) {
-            // Response has data property with array
-            tokens = response.data.data;
-        } else if (response.data.coins && Array.isArray(response.data.coins)) {
-            // Response has coins property with array
-            tokens = response.data.coins;
-        } else if (response.data.items && Array.isArray(response.data.items)) {
-            // Response has items property with array
-            tokens = response.data.items;
-        }
-        
-        if (!tokens || tokens.length === 0) {
-            return null;
-        }
-        
-        return tokens;
-    } catch (error) {
-        console.error(`Error fetching created tokens for ${address}:`, error.message);
-        throw error;
-    }
-}
-
-
-
-/**
  * Fetch the metadata URI for a token and retrieve the data from that URI
  * @param {string} mint - The token mint address
  * @returns {Promise<Object|null>} The metadata data from the URI, or null if not found
@@ -2639,32 +2588,6 @@ async function checkAlert(alert, token) {
             const marketCapUSD = marketCapSol * solanaPriceUSD;
             return marketCapUSD >= alert.threshold;
         
-        case 'deployer-bonded':
-            // Check if the deployer has bonded percentage of their tokens
-            if (!token.deployer) {
-                return false;
-            }
-            try {
-                const created = await getCreated(token.deployer);
-                if (!created || !Array.isArray(created) || created.length === 0) {
-                    return false;
-                }
-                
-                // Filter out the current token (by mint) and calculate bonded percentage
-                const otherTokens = created.filter(t => t.mint !== token.mint);
-                if (otherTokens.length === 0) {
-                    return false; // No other tokens to check
-                }
-                
-                const bondedTokens = otherTokens.filter(t => t.complete === true);
-                const bondedPercentage = (bondedTokens.length / otherTokens.length) * 100;
-                
-                return bondedPercentage >= alert.percentage;
-            } catch (error) {
-                console.error(`Error checking deployer-bonded alert for ${alert.id}:`, error.message);
-                return false;
-            }
-        
         case 'twitter-handle':
             if (!token.twitter) return false;
             const twitterUsername = extractTwitterUsername(token.twitter);
@@ -2825,8 +2748,6 @@ function getAlertDescription(alert) {
             return `Developer wallet matches "${alert.value.substring(0, 8)}..."`;
         case 'deployer-marketcap':
             return `Developer has token above $${alert.threshold?.toLocaleString() || 'N/A'}`;
-        case 'deployer-bonded':
-            return `Developer has bonded ${alert.percentage || 'N/A'}% of tokens`;
         case 'twitter-handle':
             return `Twitter handle matches "${alert.value}"`;
         case 'website-contains':
@@ -2975,36 +2896,6 @@ ws.send(JSON.stringify(payload));
             console.log(`Token [PARTIAL]: ${response.name} (${response.symbol}) - ${response.mint}`);
         }
 
-        // Fetch created tokens to log developer stats (always fetch for logging)
-        getCreated(response.traderPublicKey)
-        .then(created => {
-            if (created && Array.isArray(created)) {
-                const totalCreated = created.length;
-                const bondedTokens = created.filter(token => token.complete === true).length;
-                const bondedPercentage = totalCreated > 0 ? (bondedTokens / totalCreated) * 100 : 0;
-                
-                // Find highest value token by usd_market_cap
-                let highestValueToken = null;
-                let highestMarketCap = 0;
-                
-                created.forEach(token => {
-                    const marketCap = token.usd_market_cap || 0;
-                    if (marketCap > highestMarketCap) {
-                        highestMarketCap = marketCap;
-                        highestValueToken = token;
-                    }
-                });
-                
-                // Developer stats calculated (console logging removed)
-                console.log('Developer stats calculated');
-            } else {
-                console.log(`No created tokens found for ${response.traderPublicKey}`);
-            }
-        })
-        .catch(error => {
-            console.error(`Error fetching created tokens for ${response.traderPublicKey}:`, error.message);
-        });
-        
         // Always broadcast new token to all connected clients
         broadcastNewToken(tokenData);
         

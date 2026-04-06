@@ -68,13 +68,16 @@
       margin-right: auto;
     }
     .vol-status-row {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
       gap: 8px;
       font-size: 13px;
       color: #888;
-      margin-bottom: 16px;
     }
     .vol-status-dot {
       width: 10px;
@@ -104,16 +107,28 @@
     }
     .vol-platform select:hover { border-color: #666; }
     .vol-platform select:focus { border-color: #4a9eff; }
-    .vol-nav {
+    .back-home-nav {
       text-align: center;
       margin-bottom: 18px;
     }
-    .vol-nav a {
+    .back-home-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
       color: #6bb3ff;
       font-size: 14px;
+      font-weight: 600;
       text-decoration: none;
     }
-    .vol-nav a:hover { text-decoration: underline; }
+    .back-home-link:hover {
+      text-decoration: underline;
+    }
+    .back-home-link img {
+      height: 36px;
+      width: auto;
+      display: block;
+      flex-shrink: 0;
+    }
     .vol-panel {
       background: #1a1a1a;
       border: 2px solid #444;
@@ -241,16 +256,16 @@
   <canvas id="backgroundCanvas"></canvas>
   <div class="stars-container" id="starsContainer" aria-hidden="true"></div>
 
+  <div class="vol-status-row" aria-live="polite">
+    <span class="vol-status-dot" id="volStatusDot"></span>
+    <span id="volStatusText">Disconnected</span>
+  </div>
+
   <div class="vol-main">
     <header class="vol-header">
       <h1>Volume Monitor</h1>
-      <p class="vol-sub">Top 10 tokens by <strong>current 1-minute</strong> trading volume (buy + sell, SOL). Rankings refresh live as trades stream from the server.</p>
+      <p class="vol-sub">Top 10 tokens by <strong>current 1-minute</strong> trading volume (buy + sell, SOL).</p>
     </header>
-
-    <div class="vol-status-row">
-      <span class="vol-status-dot" id="volStatusDot"></span>
-      <span id="volStatusText">Disconnected</span>
-    </div>
 
     <div class="vol-platform">
       <label for="platformSelect">Trading platform:</label>
@@ -261,8 +276,11 @@
       </select>
     </div>
 
-    <div class="vol-nav">
-      <a href="index.html">← Home</a>
+    <div class="back-home-nav">
+      <a href="index.html" class="back-home-link">
+        <img src="foxdown.png" alt="" width="72" height="72" decoding="async" />
+        <span>Back Home</span>
+      </a>
     </div>
 
     <div class="vol-panel">

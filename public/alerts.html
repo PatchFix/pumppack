@@ -96,6 +96,28 @@
     .platform-selector select:focus {
       border-color: #4a9eff;
     }
+    .back-home-nav {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+    .back-home-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: #6bb3ff;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .back-home-link:hover {
+      text-decoration: underline;
+    }
+    .back-home-link img {
+      height: 36px;
+      width: auto;
+      display: block;
+      flex-shrink: 0;
+    }
     .grid { display: flex; gap: 20px; }
     .box {
       width: 200px;
@@ -193,42 +215,13 @@
       font-weight: bold;
     }
     .dexmon-hint {
-      margin-top: auto;
-      padding: 16px 20px 0;
+      margin: 0 0 16px;
+      padding: 0 16px;
       font-size: 13px;
       color: #888;
       text-align: center;
       max-width: 28rem;
       line-height: 1.45;
-    }
-    .dexmon-support {
-      margin-top: 12px;
-      padding: 0 20px 24px;
-      font-size: 13px;
-      color: #888;
-      text-align: center;
-      max-width: 28rem;
-      line-height: 1.45;
-    }
-    .dexmon-support-ca {
-      margin-top: 8px;
-      display: inline-block;
-      background: none;
-      border: none;
-      padding: 4px 8px;
-      font: inherit;
-      font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
-      color: #6bb3ff;
-      cursor: pointer;
-      text-decoration: underline;
-      text-underline-offset: 3px;
-    }
-    .dexmon-support-ca:hover {
-      color: #8cc8ff;
-    }
-    .dexmon-support-ca:focus-visible {
-      outline: 2px solid #4a9eff;
-      outline-offset: 2px;
     }
 
     .ca-modal-overlay {
@@ -364,6 +357,13 @@
       <option value="terminal">Terminal</option>
     </select>
   </div>
+  <div class="back-home-nav">
+    <a href="index.html" class="back-home-link">
+      <img src="foxdown.png" alt="" width="72" height="72" decoding="async" />
+      <span>Back Home</span>
+    </a>
+  </div>
+  <p class="dexmon-hint">Keep this tab in a separate window to prevent delayed alerts.</p>
   <div class="grid">
     <div class="box-container">
       <div class="box" onclick="handleBoxClick(this)"><span class="box-placeholder">Click to add CA</span></div>
@@ -381,13 +381,6 @@
       <button class="remove-btn" onclick="removeToken(this)">Remove</button>
     </div>
   </div>
-  <p class="dexmon-hint">Keep this tab in a separate window to prevent delayed alerts.</p>
-  <p class="dexmon-support">
-    Support this tool and future projects:<br>
-    <button type="button" class="dexmon-support-ca" id="supportTipCa" title="Click to copy contract address">
-      <span id="supportTipCaInner">[xxxx...pump]</span>
-    </button>
-  </p>
   </div>
 
   <div id="caModalOverlay" class="ca-modal-overlay" aria-hidden="true">
@@ -509,48 +502,6 @@
       new HomeCanvasAnimation();
     }
 
-    /** Paste full SPL mint when the support token is live; leave '' to keep the xxxx...pump placeholder (click shows Coming soon). */
-    const SUPPORT_TIP_MINT = '';
-
-    function abbreviateSupportMint(mint) {
-      if (!mint || mint.length < 9) return mint || '';
-      return `${mint.slice(0, 4)}...${mint.slice(-4)}`;
-    }
-
-    function initSupportTipCa() {
-      const btn = document.getElementById('supportTipCa');
-      const inner = document.getElementById('supportTipCaInner');
-      if (!btn || !inner) return;
-      const displayText = SUPPORT_TIP_MINT
-        ? `[${abbreviateSupportMint(SUPPORT_TIP_MINT)}]`
-        : '[xxxx...pump]';
-      inner.textContent = displayText;
-      btn.title = SUPPORT_TIP_MINT
-        ? 'Click to copy contract address'
-        : 'CA coming soon';
-
-      btn.addEventListener('click', async () => {
-        if (!SUPPORT_TIP_MINT) {
-          const prev = inner.textContent;
-          inner.textContent = '[Coming soon]';
-          setTimeout(() => {
-            inner.textContent = prev;
-          }, 1200);
-          return;
-        }
-        try {
-          await navigator.clipboard.writeText(SUPPORT_TIP_MINT.trim());
-          const prev = inner.textContent;
-          inner.textContent = '[Copied!]';
-          setTimeout(() => {
-            inner.textContent = prev;
-          }, 1500);
-        } catch (e) {
-          console.error('Copy failed:', e);
-        }
-      });
-    }
-
     let caModalTargetBox = null;
 
     function openCaModal(box) {
@@ -621,12 +572,10 @@
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
         startDexmonBackground();
-        initSupportTipCa();
         initCaModal();
       });
     } else {
       startDexmonBackground();
-      initSupportTipCa();
       initCaModal();
     }
 

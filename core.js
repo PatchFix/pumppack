@@ -384,49 +384,6 @@ async function getToken(mint) {
 }
 
 /**
- * Fetch tokens created by a deployer address
- * @param {string} address - The deployer wallet address
- * @returns {Promise<Array|null>} Array of tokens created by the deployer, or null if not found
- */
-async function getCreated(address) {
-    try {
-        const response = await axios.get(`https://frontend-api-v3.pump.fun/coins/user-created-coins/${address}?offset=0&limit=100&includeNsfw=true`);
-        
-        // Check if response data is empty
-        if (!response.data) {
-            return null;
-        }
-        
-        // Handle different response structures
-        let tokens = null;
-        if (Array.isArray(response.data)) {
-            // Response is directly an array
-            tokens = response.data;
-        } else if (response.data.data && Array.isArray(response.data.data)) {
-            // Response has data property with array
-            tokens = response.data.data;
-        } else if (response.data.coins && Array.isArray(response.data.coins)) {
-            // Response has coins property with array
-            tokens = response.data.coins;
-        } else if (response.data.items && Array.isArray(response.data.items)) {
-            // Response has items property with array
-            tokens = response.data.items;
-        }
-        
-        if (!tokens || tokens.length === 0) {
-            return null;
-        }
-        
-        return tokens;
-    } catch (error) {
-        console.error(`Error fetching created tokens for ${address}:`, error.message);
-        throw error;
-    }
-}
-
-
-
-/**
  * Fetch the metadata URI for a token and retrieve the data from that URI
  * @param {string} mint - The token mint address
  * @returns {Promise<Object|null>} The metadata data from the URI, or null if not found
@@ -590,49 +547,6 @@ ws.on('message', function message(data) {
             console.log(`Token [PARTIAL]: ${response.name} (${response.symbol}) - ${response.mint}`);
         }
 
-        // Only fetch created tokens if storing (to avoid unnecessary API calls)
-        if (STORE_TOKENS) {
-            getCreated(response.traderPublicKey)
-            .then(created => {
-                if (created && Array.isArray(created)) {
-                    const totalCreated = created.length;
-                    const bondedTokens = created.filter(token => token.complete === true).length;
-                    
-                    // Find highest value token by usd_market_cap
-                    let highestValueToken = null;
-                    let highestMarketCap = 0;
-                    
-                    created.forEach(token => {
-                        const marketCap = token.usd_market_cap || 0;
-                        if (marketCap > highestMarketCap) {
-                            highestMarketCap = marketCap;
-                            highestValueToken = token;
-                        }
-                    });
-                    
-                    console.log(`\n=== Deployer: ${response.traderPublicKey} ===`);
-                    console.log(`Tokens created: ${totalCreated}`);
-                    console.log(`Tokens bonded: ${bondedTokens}`);
-                    
-                    if (highestValueToken) {
-                        console.log(`Highest value token:`);
-                        console.log(`  Name: ${highestValueToken.name || 'N/A'}`);
-                        console.log(`  Symbol: ${highestValueToken.symbol || 'N/A'}`);
-                        console.log(`  Mint: ${highestValueToken.mint || 'N/A'}`);
-                        console.log(`  USD Market Cap: $${highestValueToken.usd_market_cap ? highestValueToken.usd_market_cap.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00'}`);
-                    } else {
-                        console.log(`Highest value token: None found`);
-                    }
-                    console.log('');
-                } else {
-                    console.log(`No created tokens found for ${response.traderPublicKey}`);
-                }
-            })
-            .catch(error => {
-                console.error(`Error fetching created tokens for ${response.traderPublicKey}:`, error.message);
-            });
-        }
-        
         // Always broadcast new token to all connected clients
         broadcastNewToken(tokenData);
 

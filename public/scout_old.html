@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PumpFun ToolKit - Scout</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body data-theme="pump">
+    <canvas id="backgroundCanvas"></canvas>
+    
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-top">
+                <h1 class="app-title">PumpFun ToolKit - Scout</h1>
+                <div class="header-buttons">
+                    <button type="button" class="btn btn-secondary" id="loginBtn">
+                        <span class="btn-icon">🔑</span>
+                        Login
+                    </button>
+                    <button type="button" class="btn btn-primary" id="sortBtn">
+                        <span class="btn-icon">⇅</span>
+                        Sort
+                    </button>
+                </div>
+            </div>
+            <div class="status-container">
+                <div id="status" class="status-indicator">
+                    <canvas id="statusCanvas" width="12" height="12"></canvas>
+                    <span class="status-text" style="display: none;">Disconnected</span>
+                </div>
+                <a href="index.html" class="home-btn" title="Return to Home">
+                    <span class="btn-icon">🏠</span>
+                    Home
+                </a>
+                <button type="button" class="home-btn" id="settingsBtn" title="Settings">
+                    <span class="btn-icon">⚙</span>
+                    Settings
+                </button>
+                <button type="button" class="home-btn" id="helpBtn" title="How Scout works">
+                    <span class="btn-icon">?</span>
+                    Help
+                </button>
+            </div>
+        </header>
+
+        <div class="live-streams-ticker-container" id="liveStreamsTickerContainer">
+            <div class="live-streams-ticker-label">Top Streams:</div>
+            <div class="live-streams-ticker-wrapper">
+                <div class="live-streams-ticker" id="liveStreamsTicker">
+                    <!-- Live streams will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <main class="app-main">
+            <section class="matched-tokens-section full-width">
+                    <div class="section-header-with-action">
+                        <h2>Tokens</h2>
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <div class="token-count" id="tokenCount">0 tokens</div>
+                            <div class="resort-indicator" id="resortIndicator" style="display: none;">
+                                <div class="resort-progress-container">
+                                    <div class="resort-progress-bar"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tokens-grid" id="tokensContainer">
+                        <div class="empty-state">
+                            <canvas id="emptyTokensCanvas" width="80" height="80"></canvas>
+                            <p>No tokens loaded yet</p>
+                        </div>
+                    </div>
+                </section>
+        </main>
+    </div>
+
+    <!-- Sort Options Modal -->
+    <div class="modal-overlay" id="sortModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Sort Options</h2>
+                <button type="button" class="modal-close" id="closeSortModalBtn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-button-groups">
+                    <div class="button-group">
+                        <div class="group-label">Sort By</div>
+                        <div class="button-group-buttons">
+                            <button type="button" class="modal-action-btn" data-sort="recent">
+                                Most Recent
+                            </button>
+                            <button type="button" class="modal-action-btn" data-sort="marketcap">
+                                Highest Marketcap
+                            </button>
+                            <button type="button" class="modal-action-btn" data-sort="volume">
+                                Total Volume
+                            </button>
+                            <button type="button" class="modal-action-btn" data-sort="volume1m">
+                                1 Min Volume
+                            </button>
+                            <button type="button" class="modal-action-btn" data-sort="volume5m">
+                                5 Min Volume
+                            </button>
+                            <button type="button" class="modal-action-btn" data-sort="volume15m">
+                                15 Min Volume
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" id="cancelSortBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Settings</h2>
+                <button type="button" class="modal-close" id="closeSettingsModalBtn">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="settings-section">
+                    <div class="settings-item">
+                        <label class="settings-label">On Token Click</label>
+                        <div class="settings-button-group">
+                            <button type="button" class="settings-option-btn" data-value="pumpfun">Pump.Fun</button>
+                            <button type="button" class="settings-option-btn" data-value="pumpfun-advanced">Pump.Fun Advanced</button>
+                            <button type="button" class="settings-option-btn" data-value="gmgn">GMGN</button>
+                            <button type="button" class="settings-option-btn" data-value="axiom">Axiom</button>
+                            <button type="button" class="settings-option-btn" data-value="copy-ca">Copy CA</button>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label for="alertVolume" class="settings-label">Alert Sound Volume</label>
+                        <div class="volume-control">
+                            <input type="range" id="alertVolume" class="volume-slider" min="0" max="100" value="50" step="1">
+                            <span class="volume-value" id="alertVolumeValue">50%</span>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label class="settings-label">Theme</label>
+                        <div class="settings-button-group theme-buttons">
+                            <button type="button" class="settings-option-btn theme-btn" data-theme="dark">Dark</button>
+                            <button type="button" class="settings-option-btn theme-btn" data-theme="ocean">Ocean</button>
+                            <button type="button" class="settings-option-btn theme-btn" data-theme="pump">Pump</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-primary" id="saveSettingsBtn">Save</button>
+                <button type="button" class="btn btn-secondary" id="cancelSettingsBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal-overlay" id="helpModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">How Scout Works</h2>
+                <button type="button" class="modal-close" id="closeHelpBtn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="help-section">
+                    <h3>Sorting Methods</h3>
+                    <p><strong>Standard sorting methods:</strong></p><p><strong>Most Recent</strong>, <strong>Highest Marketcap</strong>, and <strong>Total Volume</strong>.</p>
+                    <br>
+                    <p><strong>IncrementalVolume Sorting:</strong></p><p>Sorts tokens by trading volume in the specified time window. Useful for finding tokens with recent activity. Volume-based sorts automatically refresh every 5 seconds to keep the list current.</p>
+                </div>
+                
+                <div class="help-section">
+                    <h3>Alert Sounds</h3>
+                    <p>When a token completes its migration or when Dex payment statuses change, you'll hear alert sounds. The volume can be adjusted in Settings using the "Alert Sound Volume" slider. Positive sounds play for completed migrations and approved payments, while negative sounds indicate cancelled payments.</p>
+                </div>
+                
+                <div class="help-section">
+                    <h3>Dex Icons</h3>
+                    <p><strong>Dex payment badges are on the top left of the token card.</strong></p>
+                    <p><strong>⏳:</strong> Dex payment processing.</p>
+                    <p><strong>✓:</strong> Dex successfully paid.</p>
+                    <p><strong>✗:</strong> Dex payment cancelled.</p>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-primary" id="closeHelpBtn2">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="scout.js"></script>
+</body>
+</html>
