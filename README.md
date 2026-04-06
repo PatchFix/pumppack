@@ -29,7 +29,6 @@ The home page shows a **contract address** loaded from the server (`GET /api/loc
 Optional:
 
 - **PostgreSQL** — set `DATABASE_URL` for persistent user/alert storage; without it the app can fall back to JSON storage where implemented.
-- **Chromium** — Puppeteer is a dependency; some scraping paths may need a working browser in your environment.
 
 ## Quick start
 
