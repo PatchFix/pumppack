@@ -1,5 +1,11 @@
 # PumpFun ToolKit
 
+Try out the build at: https://PFKit.fun
+
+- DexScreener payment monitoring
+- Customizable token launch alerts
+- One-Minute volume ranking
+
 Node.js app that streams Pump.fun token activity, serves a small web UI, and exposes REST + Socket.IO APIs for alerts, launch watching, and volume rankings.
 
 ## Features
