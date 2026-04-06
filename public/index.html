@@ -194,12 +194,159 @@
     }
     .dexmon-hint {
       margin-top: auto;
-      padding: 16px 20px 24px;
+      padding: 16px 20px 0;
       font-size: 13px;
       color: #888;
       text-align: center;
       max-width: 28rem;
       line-height: 1.45;
+    }
+    .dexmon-support {
+      margin-top: 12px;
+      padding: 0 20px 24px;
+      font-size: 13px;
+      color: #888;
+      text-align: center;
+      max-width: 28rem;
+      line-height: 1.45;
+    }
+    .dexmon-support-ca {
+      margin-top: 8px;
+      display: inline-block;
+      background: none;
+      border: none;
+      padding: 4px 8px;
+      font: inherit;
+      font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
+      color: #6bb3ff;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    .dexmon-support-ca:hover {
+      color: #8cc8ff;
+    }
+    .dexmon-support-ca:focus-visible {
+      outline: 2px solid #4a9eff;
+      outline-offset: 2px;
+    }
+
+    .ca-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0, 0, 0, 0.58);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .ca-modal-overlay.open {
+      display: flex;
+    }
+    .ca-modal {
+      position: relative;
+      width: 100%;
+      max-width: 400px;
+      background: linear-gradient(160deg, #282828 0%, #181818 100%);
+      border: 2px solid #3d3d3d;
+      border-radius: 16px;
+      box-shadow:
+        0 24px 56px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(74, 222, 128, 0.12);
+      overflow: visible;
+    }
+    .ca-modal-inner {
+      position: relative;
+      padding: 1.6rem 1.6rem 1.25rem;
+      padding-bottom: 4.75rem;
+      min-height: 140px;
+    }
+    .ca-modal-fox {
+      position: absolute;
+      left: 0.35rem;
+      bottom: 0.35rem;
+      width: min(132px, 36vw);
+      height: auto;
+      pointer-events: none;
+      z-index: 0;
+      filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45));
+    }
+    .ca-modal-body {
+      position: relative;
+      z-index: 1;
+    }
+    .ca-modal-body h2 {
+      margin: 0 0 0.35rem 0;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #f0f0f0;
+      letter-spacing: -0.02em;
+    }
+    .ca-modal-hint {
+      margin: 0 0 1rem 0;
+      font-size: 0.85rem;
+      color: #888;
+      line-height: 1.4;
+    }
+    .ca-modal-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
+      color: #e8e8e8;
+      background: #141414;
+      border: 2px solid #4a4a4a;
+      border-radius: 10px;
+      outline: none;
+      margin-bottom: 8px;
+    }
+    .ca-modal-input::placeholder {
+      color: #555;
+    }
+    .ca-modal-input:focus {
+      border-color: #4a9eff;
+      box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.2);
+    }
+    .ca-modal-error {
+      font-size: 0.8rem;
+      color: #f87171;
+      margin-bottom: 10px;
+      min-height: 1.2em;
+    }
+    .ca-modal-error:empty {
+      display: none;
+    }
+    .ca-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .ca-modal-actions button {
+      padding: 10px 18px;
+      font-size: 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      border: none;
+      font-weight: 600;
+    }
+    .ca-modal-cancel {
+      background: #333;
+      color: #ccc;
+    }
+    .ca-modal-cancel:hover {
+      background: #444;
+    }
+    .ca-modal-submit {
+      background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
+      color: #0a0a0a;
+    }
+    .ca-modal-submit:hover {
+      filter: brightness(1.08);
     }
   </style>
 </head>
@@ -235,6 +382,30 @@
     </div>
   </div>
   <p class="dexmon-hint">Keep this tab in a separate window to prevent delayed alerts.</p>
+  <p class="dexmon-support">
+    Support this tool and future projects:<br>
+    <button type="button" class="dexmon-support-ca" id="supportTipCa" title="Click to copy contract address">
+      <span id="supportTipCaInner">[xxxx...pump]</span>
+    </button>
+  </p>
+  </div>
+
+  <div id="caModalOverlay" class="ca-modal-overlay" aria-hidden="true">
+    <div class="ca-modal" role="dialog" aria-modal="true" aria-labelledby="caModalTitle" tabindex="-1">
+      <div class="ca-modal-inner">
+        <img src="foxup.png" alt="" class="ca-modal-fox" width="132" decoding="async" />
+        <div class="ca-modal-body">
+          <h2 id="caModalTitle">Add token</h2>
+          <p class="ca-modal-hint">Paste the Solana mint (contract address) to monitor.</p>
+          <input type="text" id="caModalInput" class="ca-modal-input" placeholder="Mint address…" autocomplete="off" spellcheck="false" />
+          <p id="caModalError" class="ca-modal-error" role="alert"></p>
+          <div class="ca-modal-actions">
+            <button type="button" class="ca-modal-cancel" id="caModalCancel">Cancel</button>
+            <button type="button" class="ca-modal-submit" id="caModalSubmit">Add token</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -338,10 +509,125 @@
       new HomeCanvasAnimation();
     }
 
+    /** Paste full SPL mint when the support token is live; leave '' to keep the xxxx...pump placeholder (click shows Coming soon). */
+    const SUPPORT_TIP_MINT = '';
+
+    function abbreviateSupportMint(mint) {
+      if (!mint || mint.length < 9) return mint || '';
+      return `${mint.slice(0, 4)}...${mint.slice(-4)}`;
+    }
+
+    function initSupportTipCa() {
+      const btn = document.getElementById('supportTipCa');
+      const inner = document.getElementById('supportTipCaInner');
+      if (!btn || !inner) return;
+      const displayText = SUPPORT_TIP_MINT
+        ? `[${abbreviateSupportMint(SUPPORT_TIP_MINT)}]`
+        : '[xxxx...pump]';
+      inner.textContent = displayText;
+      btn.title = SUPPORT_TIP_MINT
+        ? 'Click to copy contract address'
+        : 'CA coming soon';
+
+      btn.addEventListener('click', async () => {
+        if (!SUPPORT_TIP_MINT) {
+          const prev = inner.textContent;
+          inner.textContent = '[Coming soon]';
+          setTimeout(() => {
+            inner.textContent = prev;
+          }, 1200);
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(SUPPORT_TIP_MINT.trim());
+          const prev = inner.textContent;
+          inner.textContent = '[Copied!]';
+          setTimeout(() => {
+            inner.textContent = prev;
+          }, 1500);
+        } catch (e) {
+          console.error('Copy failed:', e);
+        }
+      });
+    }
+
+    let caModalTargetBox = null;
+
+    function openCaModal(box) {
+      caModalTargetBox = box;
+      const overlay = document.getElementById('caModalOverlay');
+      const input = document.getElementById('caModalInput');
+      const err = document.getElementById('caModalError');
+      if (!overlay || !input) return;
+      err.textContent = '';
+      input.value = '';
+      overlay.classList.add('open');
+      overlay.setAttribute('aria-hidden', 'false');
+      requestAnimationFrame(() => {
+        input.focus();
+        input.select();
+      });
+    }
+
+    function closeCaModal() {
+      const overlay = document.getElementById('caModalOverlay');
+      if (!overlay) return;
+      overlay.classList.remove('open');
+      overlay.setAttribute('aria-hidden', 'true');
+      caModalTargetBox = null;
+    }
+
+    function confirmCaModal() {
+      const box = caModalTargetBox;
+      const input = document.getElementById('caModalInput');
+      const err = document.getElementById('caModalError');
+      if (!box || !input || !err) return;
+      const trimmed = input.value.trim();
+      if (!trimmed) {
+        err.textContent = 'Enter a contract address.';
+        return;
+      }
+      err.textContent = '';
+      commitAddToken(box, trimmed);
+      closeCaModal();
+    }
+
+    function initCaModal() {
+      const overlay = document.getElementById('caModalOverlay');
+      const input = document.getElementById('caModalInput');
+      const cancel = document.getElementById('caModalCancel');
+      const submit = document.getElementById('caModalSubmit');
+      if (!overlay || !input || !cancel || !submit) return;
+
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeCaModal();
+      });
+      cancel.addEventListener('click', closeCaModal);
+      submit.addEventListener('click', confirmCaModal);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          confirmCaModal();
+        }
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && overlay.classList.contains('open')) {
+          e.preventDefault();
+          closeCaModal();
+        }
+      });
+    }
+
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', startDexmonBackground);
+      document.addEventListener('DOMContentLoaded', () => {
+        startDexmonBackground();
+        initSupportTipCa();
+        initCaModal();
+      });
     } else {
       startDexmonBackground();
+      initSupportTipCa();
+      initCaModal();
     }
 
     const tokens = []; // store {address, box, lastStatus, infoDiv, profileData, lastBoostCount, lastSocialCount}
@@ -508,10 +794,10 @@
     }
 
     function addToken(box) {
-      const address = prompt("Enter token address:");
-      if (!address) return;
-      const trimmed = address.trim();
+      openCaModal(box);
+    }
 
+    function commitAddToken(box, trimmed) {
       box.innerHTML = "";
       const stack = document.createElement("div");
       stack.className = "box-stack";
