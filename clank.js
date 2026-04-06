@@ -67,7 +67,7 @@ let currentMetas = [];
 // Launch token tracking
 // This will be set to the mint address when the specified developer creates a token
 let launchToken = null;
-const LAUNCH_DEVELOPER_WALLET = 'AvHaC68btjF1d4mSDggW3ChbY4dkF3wrE9XKe5N2kzmx';
+const LAUNCH_DEVELOPER_WALLET = '9nUxMiVqrSiUnQqXVYPdJz13u1ZaDN9AMDQyTDjxk7m8';
 
 // Telegram Bot Configuration
 const TELEGRAM_BOT_NAME = 'PFKit_bot';
