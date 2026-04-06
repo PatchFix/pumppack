@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="socket-backend-url" content="">
+  <meta name="api-backend-url" content="">
   <title>Volume Monitor · PumpFun ToolKit</title>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
   <style>
@@ -153,12 +154,48 @@
       font-size: 14px;
       text-align: center;
     }
-    .vol-icon {
+    .vol-icon-wrap {
+      position: relative;
       width: 40px;
       height: 40px;
-      border-radius: 8px;
+      flex-shrink: 0;
+    }
+    .vol-icon-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       object-fit: cover;
+      border-radius: 8px;
       background: #2a2a2a;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      z-index: 2;
+    }
+    .vol-icon-img.loaded {
+      opacity: 1;
+    }
+    .vol-icon-placeholder {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 3px;
+      box-sizing: border-box;
+      font-size: 9px;
+      font-weight: 800;
+      line-height: 1.05;
+      color: #e8ffe8;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      word-break: break-word;
+      overflow: hidden;
+      border: 1px solid rgba(74, 222, 128, 0.35);
+      background: linear-gradient(145deg, #1a2e22 0%, #0f1f18 100%);
     }
     .vol-name {
       min-width: 0;
@@ -194,7 +231,8 @@
         gap: 6px;
         padding: 8px 10px;
       }
-      .vol-icon { width: 36px; height: 36px; }
+      .vol-icon-wrap { width: 36px; height: 36px; }
+      .vol-icon-placeholder { font-size: 8px; }
       .vol-amount { font-size: 11px; }
     }
   </style>
@@ -348,11 +386,91 @@
       return d.innerHTML;
     }
 
+    function apiOrigin() {
+      const m = document.querySelector('meta[name="api-backend-url"]');
+      const u = m?.getAttribute('content')?.trim();
+      if (u) return u.replace(/\/$/, '');
+      const s = document.querySelector('meta[name="socket-backend-url"]');
+      const su = s?.getAttribute('content')?.trim();
+      if (su) return su.replace(/\/$/, '');
+      return window.location.origin;
+    }
+
+    function pumpCoinImageCdn(mint) {
+      return mint ? 'https://images.pump.fun/coin-image/' + mint + '?variant=600x600' : '';
+    }
+
+    async function fetchPumpCoin(mint) {
+      if (!mint) return null;
+      const base = apiOrigin();
+      const url = base + '/api/pump-coin/' + encodeURIComponent(mint);
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return res.json();
+    }
+
+    function volPlaceholderLabel(t) {
+      const sym = String(t.symbol || '').trim();
+      if (sym) return sym.length > 6 ? sym.slice(0, 6) : sym;
+      const n = String(t.name || '').trim();
+      if (n) return n.length > 5 ? n.slice(0, 5) : n;
+      return '?';
+    }
+
     function tokenImageUrl(t) {
       if (t.image_uri) return t.image_uri;
       if (t.image) return t.image;
-      if (t.mint) return 'https://images.pump.fun/coin-image/' + t.mint + '?variant=600x600';
+      if (t.mint) return pumpCoinImageCdn(t.mint);
       return '';
+    }
+
+    function wireVolRowImages(host) {
+      if (!host) return;
+      host.querySelectorAll('img.vol-icon-img').forEach((img) => {
+        const mint = img.getAttribute('data-mint');
+
+        img.addEventListener('load', () => {
+          if (img.naturalWidth > 0) img.classList.add('loaded');
+        });
+
+        if (img.complete && img.naturalWidth > 0) {
+          img.classList.add('loaded');
+        }
+
+        img.addEventListener('error', async () => {
+          img.classList.remove('loaded');
+          if (img.dataset.retryDone === '1') {
+            img.style.display = 'none';
+            return;
+          }
+          if (img.dataset.retryApi === '1') {
+            img.dataset.retryDone = '1';
+            img.style.display = 'none';
+            return;
+          }
+          img.dataset.retryApi = '1';
+          if (mint) {
+            try {
+              const api = await fetchPumpCoin(mint);
+              const uri = api && (api.image_uri || api.image);
+              if (uri && String(uri).trim()) {
+                const u = uri.trim();
+                if (u !== img.src) {
+                  img.src = u;
+                  return;
+                }
+              }
+            } catch (_) {}
+            const bust = pumpCoinImageCdn(mint);
+            if (bust) {
+              img.src = bust + '&_retry=' + Date.now();
+              return;
+            }
+          }
+          img.dataset.retryDone = '1';
+          img.style.display = 'none';
+        });
+      });
     }
 
     function chartUrl(mint) {
@@ -393,6 +511,16 @@
           const vol = volumeOneMinute(t.tradesPerMinute);
           const img = tokenImageUrl(t);
           const mint = t.mint || '';
+          const ph = escapeHtml(volPlaceholderLabel(t));
+          const iconHtml = img
+            ? '<div class="vol-icon-wrap"><img class="vol-icon-img" src="' +
+              escapeHtml(img) +
+              '" alt="" loading="lazy" data-mint="' +
+              escapeHtml(mint) +
+              '" /><div class="vol-icon-placeholder">' +
+              ph +
+              '</div></div>'
+            : '<div class="vol-icon-wrap"><div class="vol-icon-placeholder">' + ph + '</div></div>';
           return (
             '<div class="vol-row" data-mint="' +
             escapeHtml(mint) +
@@ -400,9 +528,7 @@
             '<span class="vol-rank">' +
             (i + 1) +
             '</span>' +
-            (img
-              ? '<img class="vol-icon" src="' + escapeHtml(img) + '" alt="" loading="lazy" />'
-              : '<div class="vol-icon"></div>') +
+            iconHtml +
             '<div class="vol-name">' +
             '<div class="vol-name-line">' +
             escapeHtml(t.name || 'Unknown') +
@@ -417,6 +543,8 @@
           );
         })
         .join('');
+
+      wireVolRowImages(host);
 
       host.querySelectorAll('.vol-row').forEach((row) => {
         const open = () => {
