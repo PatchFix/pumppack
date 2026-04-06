@@ -280,6 +280,8 @@
     const LS_PLATFORM = 'scout.volume.platform.v1';
     const tokens = new Map();
     let socket = null;
+    let pauseRendersOnHover = false;
+    let pendingRender = false;
 
     function initStars() {
       const el = document.getElementById('starsContainer');
@@ -561,6 +563,29 @@
       });
     }
 
+    function requestRender(forceNow = false) {
+      if (!forceNow && pauseRendersOnHover) {
+        pendingRender = true;
+        return;
+      }
+      pendingRender = false;
+      renderList();
+    }
+
+    function wireHoverPause() {
+      const host = document.getElementById('volList');
+      if (!host) return;
+
+      host.addEventListener('mouseenter', () => {
+        pauseRendersOnHover = true;
+      });
+
+      host.addEventListener('mouseleave', () => {
+        pauseRendersOnHover = false;
+        if (pendingRender) requestRender(true);
+      });
+    }
+
     function setConnected(ok) {
       const dot = document.getElementById('volStatusDot');
       const tx = document.getElementById('volStatusText');
@@ -579,7 +604,7 @@
         try {
           localStorage.setItem(LS_PLATFORM, sel.value);
         } catch (_) {}
-        renderList();
+        requestRender();
       });
     }
 
@@ -601,7 +626,7 @@
           if (!Array.isArray(copy.tradesPerMinute)) copy.tradesPerMinute = [];
           tokens.set(t.mint, copy);
         });
-        renderList();
+        requestRender();
       });
 
       socket.on('token:new', (t) => {
@@ -609,30 +634,31 @@
         const copy = { ...t };
         if (!Array.isArray(copy.tradesPerMinute)) copy.tradesPerMinute = [];
         tokens.set(t.mint, copy);
-        renderList();
+        requestRender();
       });
 
       socket.on('token:update', (data) => {
         if (!data.mint) return;
         const prev = tokens.get(data.mint) || {};
         tokens.set(data.mint, mergeTokenUpdate(prev, data));
-        renderList();
+        requestRender();
       });
 
       socket.on('token:remove', (payload) => {
         const mint = payload && payload.mint;
         if (mint) {
           tokens.delete(mint);
-          renderList();
+          requestRender();
         }
       });
     }
 
     function tickMinute() {
-      renderList();
+      requestRender();
     }
 
     function init() {
+      wireHoverPause();
       wirePlatformPersistence();
       connectSocket();
       setInterval(tickMinute, 1000);
