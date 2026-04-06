@@ -110,11 +110,35 @@
       position: relative;
       transition: border-color 0.3s, box-shadow 0.3s;
     }
-    .box img {
+    .box-stack {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .box-token-img {
       width: 100%;
       height: 100%;
       object-fit: cover;
-      border-radius: 8px;
+      display: block;
+    }
+    /* DexScreener 3:1 header banner, centered vertically over the token image */
+    .box-dex-banner {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 100%;
+      aspect-ratio: 3 / 1;
+      object-fit: cover;
+      z-index: 1;
+      display: none;
+      pointer-events: none;
+    }
+    .box.has-dex-banner .box-dex-banner {
+      display: block;
     }
     .box-placeholder {
       color: #666;
@@ -324,6 +348,7 @@
 
     function setBoxPlaceholder(box) {
       box.innerHTML = '<span class="box-placeholder">Click to add CA</span>';
+      box.classList.remove('has-dex-banner');
     }
 
     async function getDex(mint) {
@@ -336,25 +361,81 @@
           return {
             websites: [],
             socials: [],
-            activeBoosts: 0
+            activeBoosts: 0,
+            headerUrl: null
           };
         }
         
         const pair = data[0];
+        const headerRaw = pair.info?.header;
+        const headerUrl =
+          typeof headerRaw === 'string' && headerRaw.trim() !== '' ? headerRaw.trim() : null;
         
         return {
           websites: pair.info?.websites || [],
           socials: pair.info?.socials || [],
-          activeBoosts: pair.boosts?.active || 0
+          activeBoosts: pair.boosts?.active || 0,
+          headerUrl
         };
       } catch (error) {
         console.error('getDex failed:', error);
         return {
           websites: [],
           socials: [],
-          activeBoosts: 0
+          activeBoosts: 0,
+          headerUrl: null
         };
       }
+    }
+
+    function setDexBanner(token, url) {
+      const banner = token.box.querySelector('.box-dex-banner');
+      if (!banner) return;
+      banner.onload = null;
+      banner.onerror = null;
+      if (!url) {
+        token.box.classList.remove('has-dex-banner');
+        banner.removeAttribute('src');
+        return;
+      }
+      if (banner.getAttribute('src') === url && banner.complete && banner.naturalWidth > 0) {
+        token.box.classList.add('has-dex-banner');
+        return;
+      }
+      token.box.classList.remove('has-dex-banner');
+      banner.onload = () => token.box.classList.add('has-dex-banner');
+      banner.onerror = () => {
+        token.box.classList.remove('has-dex-banner');
+        banner.removeAttribute('src');
+      };
+      banner.src = url;
+    }
+
+    function dexSocialLinkLabel(social) {
+      const rawUrl = social.url || '';
+      const typeLower = (social.type || '').toLowerCase();
+      let pathname = '';
+      let host = '';
+      try {
+        const u = new URL(rawUrl);
+        host = u.hostname.replace(/^www\./i, '').toLowerCase();
+        pathname = u.pathname;
+      } catch {
+        return social.type || 'Social';
+      }
+      const isXOrTwitter =
+        host === 'x.com' ||
+        host === 'twitter.com' ||
+        host === 'mobile.x.com' ||
+        host === 'mobile.twitter.com' ||
+        typeLower === 'twitter' ||
+        typeLower === 'x';
+      if (isXOrTwitter) {
+        if (pathname.includes('/i/')) return 'X Community';
+        if (pathname.includes('/status/')) return 'Tweet Link';
+        return 'X Profile';
+      }
+      return social.type || 'Social';
     }
 
     function updateTokenInfo(token) {
@@ -383,7 +464,7 @@
       if (token.profileData.socials.length > 0) {
         html += `<div class="info-section"><div class="info-label">Socials</div>`;
         token.profileData.socials.forEach(social => {
-          const label = social.type || 'Social';
+          const label = dexSocialLinkLabel(social);
           html += `<a href="${social.url}" target="_blank" class="info-link">${label}</a>`;
         });
         html += `</div>`;
@@ -399,7 +480,7 @@
 
     function handleBoxClick(box) {
       // If empty, add token
-      if (!box.querySelector("img")) {
+      if (box.querySelector('.box-placeholder')) {
         addToken(box);
       } else {
         // If populated, open new tab with selected platform link
@@ -431,11 +512,19 @@
       if (!address) return;
       const trimmed = address.trim();
 
+      box.innerHTML = "";
+      const stack = document.createElement("div");
+      stack.className = "box-stack";
       const img = document.createElement("img");
+      img.className = "box-token-img";
       img.src = `https://images.pump.fun/coin-image/${trimmed}?variant=600x600`;
       img.alt = "Token Image";
-      box.innerHTML = "";
-      box.appendChild(img);
+      const banner = document.createElement("img");
+      banner.className = "box-dex-banner";
+      banner.alt = "";
+      stack.appendChild(img);
+      stack.appendChild(banner);
+      box.appendChild(stack);
 
       const removeBtn = box.parentElement.querySelector(".remove-btn");
       removeBtn.style.display = "inline-block";
@@ -487,6 +576,7 @@
           if (status === "processing") {
             token.box.style.borderColor = "yellow";
             token.box.style.boxShadow = "0 0 20px yellow";
+            setDexBanner(token, null);
           } else if (status === "approved") {
             token.box.style.borderColor = "limegreen";
             token.box.style.boxShadow = "0 0 20px limegreen";
@@ -510,22 +600,27 @@
             token.lastSocialCount = currentSocialCount;
             token.profileData = profile;
             updateTokenInfo(token);
+            setDexBanner(token, profile.headerUrl);
           } else if (status === "cancelled") {
             token.box.style.borderColor = "red";
             token.box.style.boxShadow = "0 0 20px red";
+            setDexBanner(token, null);
           } else {
             token.box.style.borderColor = "#444";
             token.box.style.boxShadow = "none";
+            setDexBanner(token, null);
           }
         } else {
           console.log("No orders for", token.address);
           token.box.style.borderColor = "#444";
           token.box.style.boxShadow = "none";
+          setDexBanner(token, null);
         }
       } catch (err) {
         console.error("Dex check failed for", token.address, ":", err);
         token.box.style.borderColor = "#444";
         token.box.style.boxShadow = "none";
+        setDexBanner(token, null);
       }
     }
 
